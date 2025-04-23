@@ -46,7 +46,7 @@ function install-caidan() {
 
 #更新脚本
 function renew-caidan() {
-    curl -o /etc/caidan/caidan.sh https://raw.githubusercontent.com/LX-webo/hinas/main/caidan.sh
+    curl -o /etc/caidan/caidan.sh https://raw.githubusercontent.com/LeoJyenn/hinas/refs/heads/main/caidan.sh
     chmod +x /usr/bin/caidan
     echo -e "${GREEN}更新成功 重新执行caidan生效。${NC}"
     exit 1
