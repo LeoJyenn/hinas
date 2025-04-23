@@ -1769,10 +1769,10 @@ EOF
     ;;
 
 
-    renew)
+    caidanu)
         renew-caidan
         ;;
-    unload)
+    caidanun)
         unInstall-caidan
         ;;
     0)
