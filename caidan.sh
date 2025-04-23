@@ -49,8 +49,6 @@ function renew-caidan() {
     curl -o /etc/caidan/caidan.sh https://raw.githubusercontent.com/LX-webo/hinas/main/caidan.sh
     chmod +x /usr/bin/caidan
     echo -e "${GREEN}更新成功 重新执行caidan生效。${NC}"
-    echo "按任意键退出..."
-    read -n 1 -s -r -p ""
     exit 1
 }
 
