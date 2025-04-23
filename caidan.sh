@@ -101,6 +101,7 @@ ${NC}"
     echo -e "${YELLOW}9. 系统迁移${NC}"
     echo -e "${YELLOW}10.Tailscale${NC}"
     echo -e "${YELLOW}11.Httpsok${NC}"
+    echo -e "${YELLOW}12.socks5服务功能${NC}"
     echo -e "${RED}renew.更新脚本${NC}"
     echo -e "${RED}unload.卸载脚本${NC}"
     echo -e "${RED}0.系统还原${NC}"
@@ -1705,6 +1706,68 @@ EOF
         echo "按任意键继续..."
         read -n 1 -s -r -p ""
         ;;
+    12)
+        # socks5服务功能
+    	while true; do
+        clear
+        echo -e "${GREEN}====== socks5服务功能 ====== ${NC}"
+        echo -e "${YELLOW}1. 搭建v2ray客户端${NC}"
+        echo -e "${YELLOW}2. 测试是否联通${NC}"
+        echo -e "${YELLOW}3. 重启v2ray${NC}"
+        echo -e "${YELLOW}4. 开启代理本机${NC}"
+        echo -e "${YELLOW}5. 关闭代理本机${NC}"
+        echo -e "${YELLOW}6. 卸载服务${NC}"
+        echo -e "${RED}q. 返回${NC}"
+        read -p "请输入选项: " choice
+
+        function socks5() {
+            install-v2ray.sh --version v5.6.0
+            echo -e "${GREEN}安装完成！配置文件的位置：/usr/local/etc/v2ray/config.json${NC}"
+            echo -e "${GREEN}编辑修改保存这个配置文件后，输入以下命令重启客户端服务：${NC}"
+            echo -e "${GREEN}systemctl daemon-reload${NC}"
+            echo -e "${GREEN}systemctl restart v2ray${NC}"
+        }
+
+        function test() {
+            curl --socks5 127.0.0.1:10808 google.com
+        }
+
+        function restart() {
+            systemctl restart v2ray
+            echo -e "${GREEN}重启成功${NC}"
+        }
+
+        function on() {
+            export https_proxy="127.0.0.1:10808"
+            echo -e "${GREEN}开启成功${NC}"
+        }
+
+        function off() {
+            unset https_proxy
+            echo -e "${GREEN}关闭成功${NC}"
+        }
+
+        function uninstall() {
+            install-v2ray.sh --remove
+            rm /usr/local/etc/v2ray/config.json
+            echo -e "${GREEN}卸载成功${NC}"
+        }
+
+        case "$choice" in
+            1) socks5 ;;
+            2) test ;;
+            3) restart ;;
+            4) on ;;
+            5) off ;;
+            6) uninstall ;;
+            q) break ;;
+            *) echo "无效选项，请重试" ;;
+        esac
+
+        read -p "按回车继续..." dummy
+    done
+    ;;
+
 
     renew)
         renew-caidan
