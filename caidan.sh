@@ -30,7 +30,7 @@ function install-caidan() {
         elif [[ -d "/usr/sbin" ]]; then
             if [[ ! -f "/usr/sbin/caidan" ]]; then
                 ln -s /etc/caidan/caidan.sh /usr/sbin/caidan
-                chmod 700 /usr/sbin/caidan
+                sudo chmod +x /usr/bin/caidan
                 caidanType=true
             fi
             rm -rf "./caidan.sh"
@@ -47,7 +47,7 @@ function install-caidan() {
 #更新脚本
 function renew-caidan() {
     curl -o /etc/caidan/caidan.sh https://raw.githubusercontent.com/LeoJyenn/hinas/refs/heads/main/caidan.sh
-    chmod +x /usr/bin/caidan
+    sudo chmod +x /usr/bin/caidan
     echo -e "${GREEN}更新成功 重新执行caidan生效。${NC}"
     exit 1
 }
