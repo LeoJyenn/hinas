@@ -102,6 +102,7 @@ ${NC}"
     echo -e "${YELLOW}10.Tailscale${NC}"
     echo -e "${YELLOW}11.Httpsok${NC}"
     echo -e "${YELLOW}12.socks5服务功能${NC}"
+    echo -e "${RED}update.系统更新和软件更新${NC}"
     echo -e "${RED}caidanu.更新脚本${NC}"
     echo -e "${RED}caidanun.卸载脚本${NC}"
     echo -e "${RED}0.系统还原${NC}"
@@ -1768,10 +1769,15 @@ EOF
     done
     ;;
 
+    update)
+        sudo apt-get update
+	sudo apt-get upgrade
+        ;;
 
     caidanu)
         renew-caidan
         ;;
+	
     caidanun)
         unInstall-caidan
         ;;
