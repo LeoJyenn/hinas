@@ -14,42 +14,29 @@ IP=$(ifconfig eth0 | grep '\<inet\>' | grep -v '127.0.0.1' | awk '{print $2}' | 
 function mkdirTools() {
     mkdir -p /etc/caidan
 }
-# 脚本快捷方式
-function install-caidan() {
-    if [[ -f "./caidan.sh" ]] && [[ -d "/etc/caidan" ]]; then
-        mv "./caidan.sh" /etc/caidan/caidan.sh
-        local caidanType=
-        if [[ -d "/usr/bin/" ]]; then
-            if [[ ! -f "/usr/bin/caidan" ]]; then
-                ln -s /etc/caidan/caidan.sh /usr/bin/caidan
-                sudo chmod +x /usr/bin/caidan
-                caidanType=true
-            fi
 
-            rm -rf "./caidan.sh"
-        elif [[ -d "/usr/sbin" ]]; then
-            if [[ ! -f "/usr/sbin/caidan" ]]; then
-                ln -s /etc/caidan/caidan.sh /usr/sbin/caidan
-                sudo chmod +x /usr/bin/caidan
-                caidanType=true
-            fi
-            rm -rf "./caidan.sh"
-        fi
-        if [[ "${caidanType}" == "true" ]]; then
-            echo -e "${GREEN}------------------------------------\n
-            脚本安装完成，执行[caidan]打开脚本\n
-            ------------------------------------${NC}" | sed -e 's/^[[:space:]]*//'
-            exit 1
-        fi
+# 脚本快捷方式安装
+function install-caidan() {
+    if [[ -f "./caidan.sh" ]]; then
+        mkdir -p /etc/caidan
+        mv ./caidan.sh /etc/caidan/caidan.sh
+        chmod +x /etc/caidan/caidan.sh
+        ln -sf /etc/caidan/caidan.sh /usr/bin/caidan
+
+        echo -e "${GREEN}------------------------------------\n
+脚本安装完成，输入 [caidan] 打开脚本\n
+------------------------------------${NC}" | sed -e 's/^[[:space:]]*//'
+        exit 0
     fi
 }
 
-#更新脚本
+# 更新脚本
 function renew-caidan() {
     curl -o /etc/caidan/caidan.sh https://raw.githubusercontent.com/LeoJyenn/hinas/refs/heads/main/caidan.sh
-    sudo chmod +x /usr/bin/caidan
-    echo -e "${GREEN}更新成功 重新执行caidan生效。${NC}"
-    exit 1
+    chmod +x /etc/caidan/caidan.sh
+    ln -sf /etc/caidan/caidan.sh /usr/bin/caidan
+    echo -e "${GREEN}更新成功，重新执行 [caidan] 生效。${NC}"
+    exit 0
 }
 
 # 卸载脚本
@@ -57,15 +44,14 @@ function unInstall-caidan() {
     echo -e "${RED}是否确认卸载脚本？(y/n)${NC}"
     read -e -p "(y/n): " unInstallStatus
 
-    if [ "$unInstallStatus" = "y" ]; then
+    if [[ "$unInstallStatus" == "y" ]]; then
         rm -rf /etc/caidan
-        rm -rf /usr/bin/caidan
-        rm -rf /usr/sbin/caidan
+        rm -f /usr/bin/caidan
         echo -e "${GREEN}------------------------------------\n
-            脚本卸载完成\n
-            ------------------------------------${NC}" | sed -e 's/^[[:space:]]*//'
-        exit 1
-    elif [ "$unInstallStatus" = "n" ]; then
+脚本卸载完成\n
+------------------------------------${NC}" | sed -e 's/^[[:space:]]*//'
+        exit 0
+    elif [[ "$unInstallStatus" == "n" ]]; then
         echo -e "${RED}取消卸载${NC}"
     else
         echo -e "${RED}无效的选择${NC}"
@@ -73,6 +59,7 @@ function unInstall-caidan() {
     echo "按任意键继续..."
     read -n 1 -s -r -p ""
 }
+
 mkdirTools
 install-caidan
 
