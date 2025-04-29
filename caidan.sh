@@ -1742,13 +1742,13 @@ EOF
         function on() {
     	echo 'export https_proxy="127.0.0.1:10809"' >> ~/.bashrc
     	source ~/.bashrc
-    	echo -e "${GREEN}代理已设置为永久生效。${NC}"
+    	echo -e "${GREEN}代理已设置为永久，重新打开终端生效。${NC}"
 	}
 
         function off() {
     	sed -i '/export https_proxy="127.0.0.1:10809"/d' ~/.bashrc
     	source ~/.bashrc
-    	echo -e "${GREEN}代理已从 .bashrc 中移除。${NC}"
+    	echo -e "${GREEN}代理已从 .bashrc 中移除，重新打开终端生效。${NC}"
 	}
  
 	function test0() {
