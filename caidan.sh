@@ -1739,7 +1739,7 @@ EOF
         }
 
         function on() {
-            export https_proxy="127.0.0.1:10808"
+            export https_proxy="127.0.0.1:10809"
             echo -e "${GREEN}开启成功${NC}"
         }
 
