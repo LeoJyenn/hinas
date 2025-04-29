@@ -1717,7 +1717,8 @@ EOF
         echo -e "${YELLOW}3. 重启v2ray${NC}"
         echo -e "${YELLOW}4. 开启代理本机${NC}"
         echo -e "${YELLOW}5. 关闭代理本机${NC}"
-        echo -e "${YELLOW}6. 卸载服务${NC}"
+	echo -e "${YELLOW}6. 测试本机代理${NC}"
+        echo -e "${YELLOW}7. 卸载服务${NC}"
         echo -e "${RED}q. 返回${NC}"
         read -p "请输入选项: " choice
 
@@ -1739,15 +1740,21 @@ EOF
         }
 
         function on() {
-            export https_proxy="127.0.0.1:10809"
-            echo -e "${GREEN}开启成功${NC}"
-        }
+    	echo 'export https_proxy="127.0.0.1:10809"' >> ~/.bashrc
+    	source ~/.bashrc
+    	echo -e "${GREEN}代理已设置为永久生效。${NC}"
+	}
 
         function off() {
-            unset https_proxy
-            echo -e "${GREEN}关闭成功${NC}"
-        }
-
+    	sed -i '/export https_proxy="127.0.0.1:10809"/d' ~/.bashrc
+    	source ~/.bashrc
+    	echo -e "${GREEN}代理已从 .bashrc 中移除。${NC}"
+	}
+ 
+	function test1() {
+    	curl https://google.com
+	}
+ 
         function uninstall() {
             install-v2ray.sh --remove
             rm /usr/local/etc/v2ray/config.json
@@ -1760,7 +1767,8 @@ EOF
             3) restart ;;
             4) on ;;
             5) off ;;
-            6) uninstall ;;
+            6) test1 ;
+            7) uninstall ;;   
             q) break ;;
             *) echo "无效选项，请重试" ;;
         esac
