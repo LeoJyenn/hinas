@@ -1751,7 +1751,7 @@ EOF
     	echo -e "${GREEN}代理已从 .bashrc 中移除。${NC}"
 	}
  
-	function ctest() {
+	function test0() {
     	curl https://google.com
 	}
  
@@ -1767,7 +1767,7 @@ EOF
             3) restart ;;
             4) on ;;
             5) off ;;
-            6) ctest ;
+            6) test0 ;;
             7) uninstall ;;   
             q) break ;;
             *) echo "无效选项，请重试" ;;
