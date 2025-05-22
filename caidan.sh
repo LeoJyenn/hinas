@@ -19,6 +19,8 @@ if [[ "$1" == "--download" ]]; then
     chmod +x /etc/caidan/caidan.sh
     # 创建软链接
     ln -sf /etc/caidan/caidan.sh /usr/bin/caidan
+    # 修复可能的换行符问题
+    sed -i 's/\r$//' /etc/caidan/caidan.sh 2>/dev/null
     echo -e "\033[32m------------------------------------\033[0m"
     echo -e "\033[32m脚本安装完成，输入 [caidan] 打开脚本\033[0m"
     echo -e "\033[32m------------------------------------\033[0m"
@@ -3070,16 +3072,6 @@ EOF
     c | C | caidanu)
         echo -e "${YELLOW}正在更新脚本...${NC}"
 
-        # 检查网络连接
-        if ! ping -c 1 github.com &>/dev/null; then
-            echo -e "${RED}✗ 无法连接到GitHub，请检查网络连接${NC}"
-            read -e -p "是否继续尝试更新？(y/n): " continue_update
-            if [[ "$continue_update" != "y" && "$continue_update" != "Y" ]]; then
-                echo -e "${YELLOW}更新已取消${NC}"
-                return
-            fi
-        fi
-
         # 创建备份
         backup_path="/etc/caidan/caidan.sh.backup-$(date +%Y%m%d%H%M%S)"
         if [ -f "/etc/caidan/caidan.sh" ]; then
@@ -3087,12 +3079,31 @@ EOF
             echo -e "${CYAN}已创建备份: $backup_path${NC}"
         fi
 
+        # 检查网络连接
+        echo -e "${CYAN}检查网络连接...${NC}"
+        # 尝试使用不同的方式检查网络
+        if ping -c 1 -W 2 8.8.8.8 &>/dev/null; then
+            echo -e "${GREEN}网络连接正常${NC}"
+        else
+            echo -e "${RED}✗ 无法连接到互联网，请检查网络连接${NC}"
+            read -e -p "是否继续尝试更新？(y/n): " continue_update
+            if [[ "$continue_update" != "y" && "$continue_update" != "Y" ]]; then
+                echo -e "${YELLOW}更新已取消${NC}"
+                exit 0
+            fi
+        fi
+        
+        # 设置下载URL
+        GITHUB_URL="https://raw.githubusercontent.com/LeoJyenn/hinas/main/caidan.sh"
+        
         # 更新脚本
         echo -e "${CYAN}从GitHub下载最新版本...${NC}"
-        if curl -s -o /etc/caidan/caidan.sh.new https://raw.githubusercontent.com/LeoJyenn/hinas/refs/heads/main/caidan.sh; then
+        if curl -s --connect-timeout 10 -m 30 -o /etc/caidan/caidan.sh.new $GITHUB_URL; then
             # 检查文件完整性
             if [ -f "/etc/caidan/caidan.sh.new" ] && [ -s "/etc/caidan/caidan.sh.new" ]; then
                 chmod +x /etc/caidan/caidan.sh.new
+                # 修复可能的换行符问题
+                sed -i 's/\r$//' /etc/caidan/caidan.sh.new 2>/dev/null
                 mv /etc/caidan/caidan.sh.new /etc/caidan/caidan.sh
                 ln -sf /etc/caidan/caidan.sh /usr/bin/caidan
                 echo -e "${GREEN}✓ 脚本更新成功，重新执行 [caidan] 生效${NC}"
@@ -3105,6 +3116,11 @@ EOF
             fi
         else
             echo -e "${RED}✗ 更新失败，网络错误或GitHub不可访问${NC}"
+            echo -e "${YELLOW}恢复原始文件...${NC}"
+            if [ -f "$backup_path" ]; then
+                cp "$backup_path" /etc/caidan/caidan.sh
+                echo -e "${GREEN}已恢复原始文件${NC}"
+            fi
         fi
         exit 0
         ;;
