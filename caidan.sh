@@ -1,6 +1,23 @@
 #!/bin/bash
 original_lc_all=$LC_ALL
 
+# 处理命令行参数
+if [[ "$1" == "--download" ]]; then
+    echo -e "\033[32m正在执行一键安装...\033[0m"
+    # 创建安装目录
+    mkdir -p /etc/caidan
+    # 拷贝脚本到安装目录
+    cp "$0" /etc/caidan/caidan.sh
+    # 添加执行权限
+    chmod +x /etc/caidan/caidan.sh
+    # 创建软链接
+    ln -sf /etc/caidan/caidan.sh /usr/bin/caidan
+    echo -e "\033[32m------------------------------------\033[0m"
+    echo -e "\033[32m脚本安装完成，输入 [caidan] 打开脚本\033[0m"
+    echo -e "\033[32m------------------------------------\033[0m"
+    exit 0
+fi
+
 # 加载代理环境变量（如果已配置）
 if grep -q 'export.*_proxy=' ~/.bashrc; then
     # 从.bashrc提取代理设置并直接应用到当前会话
