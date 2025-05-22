@@ -1,11 +1,29 @@
 #!/bin/bash
 original_lc_all=$LC_ALL
 
+# 加载代理环境变量（如果已配置）
+if grep -q 'export.*_proxy=' ~/.bashrc; then
+    # 从.bashrc提取代理设置并直接应用到当前会话
+    proxy_https=$(grep 'export https_proxy=' ~/.bashrc | cut -d'"' -f2)
+    proxy_http=$(grep 'export http_proxy=' ~/.bashrc | cut -d'"' -f2)
+    proxy_all=$(grep 'export all_proxy=' ~/.bashrc | cut -d'"' -f2)
+
+    # 只有在变量为空时才设置，避免覆盖已经设置的值
+    [ -n "$proxy_https" ] && [ -z "$https_proxy" ] && export https_proxy="$proxy_https"
+    [ -n "$proxy_http" ] && [ -z "$http_proxy" ] && export http_proxy="$proxy_http"
+    [ -n "$proxy_all" ] && [ -z "$all_proxy" ] && export all_proxy="$proxy_all"
+fi
+
+# 颜色定义
 RED='\e[91m'
-GREEN='\e[32;1m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+GREEN='\e[92m'
+YELLOW='\e[93m'
+BLUE='\e[94m'
+MAGENTA='\e[95m'
+CYAN='\e[96m'
+WHITE='\e[97m'
+BOLD='\e[1m'
+NC='\e[0m' # No Color
 
 # IP
 IP=$(ifconfig eth0 | grep '\<inet\>' | grep -v '127.0.0.1' | awk '{print $2}' | awk 'NR==1')
@@ -23,19 +41,41 @@ function install-caidan() {
         chmod +x /etc/caidan/caidan.sh
         ln -sf /etc/caidan/caidan.sh /usr/bin/caidan
 
-        echo -e "${GREEN}------------------------------------\n
-脚本安装完成，输入 [caidan] 打开脚本\n
-------------------------------------${NC}" | sed -e 's/^[[:space:]]*//'
+        echo -e "${GREEN}------------------------------------${NC}"
+        echo -e "${GREEN}脚本安装完成，输入 [caidan] 打开脚本${NC}"
+        echo -e "${GREEN}------------------------------------${NC}"
         exit 0
     fi
 }
 
-# 更新脚本
+# 更新脚本 - 此函数保留兼容性，实际更新逻辑已移至主菜单
 function renew-caidan() {
-    curl -o /etc/caidan/caidan.sh https://raw.githubusercontent.com/LeoJyenn/hinas/refs/heads/main/caidan.sh
-    chmod +x /etc/caidan/caidan.sh
-    ln -sf /etc/caidan/caidan.sh /usr/bin/caidan
-    echo -e "${GREEN}更新成功，重新执行 [caidan] 生效。${NC}"
+    echo -e "${YELLOW}正在使用兼容模式更新脚本...${NC}"
+
+    # 创建备份
+    backup_path="/etc/caidan/caidan.sh.backup-$(date +%Y%m%d%H%M%S)"
+    if [ -f "/etc/caidan/caidan.sh" ]; then
+        cp /etc/caidan/caidan.sh "$backup_path"
+        echo -e "${CYAN}已创建备份: $backup_path${NC}"
+    fi
+
+    # 更新脚本
+    if curl -s -o /etc/caidan/caidan.sh.new https://raw.githubusercontent.com/LeoJyenn/hinas/refs/heads/main/caidan.sh; then
+        if [ -f "/etc/caidan/caidan.sh.new" ] && [ -s "/etc/caidan/caidan.sh.new" ]; then
+            chmod +x /etc/caidan/caidan.sh.new
+            mv /etc/caidan/caidan.sh.new /etc/caidan/caidan.sh
+            ln -sf /etc/caidan/caidan.sh /usr/bin/caidan
+            echo -e "${GREEN}✓ 脚本更新成功，重新执行 [caidan] 生效${NC}"
+        else
+            echo -e "${RED}✗ 下载的文件不完整${NC}"
+            if [ -f "$backup_path" ]; then
+                echo -e "${YELLOW}正在恢复备份...${NC}"
+                cp "$backup_path" /etc/caidan/caidan.sh
+            fi
+        fi
+    else
+        echo -e "${RED}✗ 更新失败，请检查网络连接${NC}"
+    fi
     exit 0
 }
 
@@ -47,9 +87,9 @@ function unInstall-caidan() {
     if [[ "$unInstallStatus" == "y" ]]; then
         rm -rf /etc/caidan
         rm -f /usr/bin/caidan
-        echo -e "${GREEN}------------------------------------\n
-脚本卸载完成\n
-------------------------------------${NC}" | sed -e 's/^[[:space:]]*//'
+        echo -e "${GREEN}------------------------------------${NC}"
+        echo -e "${GREEN}脚本卸载完成${NC}"
+        echo -e "${GREEN}------------------------------------${NC}"
         exit 0
     elif [[ "$unInstallStatus" == "n" ]]; then
         echo -e "${RED}取消卸载${NC}"
@@ -63,10 +103,47 @@ function unInstall-caidan() {
 mkdirTools
 install-caidan
 
+# 绘制菜单标题
+function print_menu_header() {
+    local title="$1"
+    local width=70
+
+    # 计算中文字符数量（每个中文字符在终端中占两个字符宽度）
+    local chinese_count=$(echo "$title" | grep -o -P '\p{Han}' | wc -l)
+
+    # 计算实际显示宽度（英文+中文*2）
+    local display_width=$((${#title} + chinese_count))
+
+    # 计算左侧填充空格数
+    local left_padding=$(((width - display_width) / 2))
+
+    # 计算右侧填充空格数
+    local right_padding=$((width - display_width - left_padding))
+
+    # 生成标题栏
+    echo -e "${BLUE}┌$(printf '%.0s─' $(seq 1 $width))┐${NC}"
+    echo -e "${BLUE}│${BOLD}${YELLOW}$(printf '%*s' $left_padding '')$title$(printf '%*s' $right_padding '')${NC}${BLUE}│${NC}"
+    echo -e "${BLUE}└$(printf '%.0s─' $(seq 1 $width))┘${NC}"
+}
+
+# 绘制菜单选项
+function print_menu_option() {
+    local number="$1"
+    local text="$2"
+    local color="${3:-$YELLOW}"
+
+    echo -e "  ${BOLD}${color}[$number]${NC} $text"
+}
+
+# 绘制菜单分隔线
+function print_menu_separator() {
+    echo -e "${BLUE}──────────────────────────────────────────────────────────────────────${NC}"
+}
+
 while true; do
     clear
 
-    echo -e "${YELLOW}
+    echo -e "${CYAN}
      _          _               _             ____                           _ 
     / \      __| |  _ __ ___   (_)  _ __     |  _ \    __ _   _ __     ___  | |
    / _ \    / _  | |  _   _ \  | | |  _ \    | |_) |  / _  | |  _ \   / _ \ | |
@@ -76,28 +153,65 @@ while true; do
 ${NC}"
 
     # 主菜单
-    echo -e "${GREEN}======  主菜单 ======${NC}"
-    echo -e "${YELLOW}1. 常用功能${NC}"
-    echo -e "${YELLOW}2. 中文语言包${NC}"
-    echo -e "${YELLOW}3. 系统检查${NC}"
-    echo -e "${YELLOW}4. Aria2、BT${NC}"
-    echo -e "${YELLOW}5. 网络测速${NC}"
-    echo -e "${YELLOW}6. 格式化U盘、TF卡${NC}"
-    echo -e "${YELLOW}7. Docker${NC}"
-    echo -e "${YELLOW}8. Cockpit${NC}"
-    echo -e "${YELLOW}9. 系统迁移${NC}"
-    echo -e "${YELLOW}10.Tailscale${NC}"
-    echo -e "${YELLOW}11.Httpsok${NC}"
-    echo -e "${YELLOW}12.socks5服务功能${NC}"
-    echo -e "${RED}update.系统更新和软件更新${NC}"
-    echo -e "${RED}caidanu.更新脚本${NC}"
-    echo -e "${RED}caidanun.卸载脚本${NC}"
-    echo -e "${RED}0.系统还原${NC}"
-    echo -e "${RED}pw.修改root密码${NC}"
-    echo -e "${RED}r.重启系统${NC}"
-    echo -e "${RED}q.退出${NC}"
+    print_menu_header "海纳思系统管理菜单"
+
+    print_menu_option "1" "常用功能"
+    print_menu_option "2" "中文语言包"
+    print_menu_option "3" "系统检查"
+    print_menu_option "4" "Aria2、BT"
+    print_menu_option "5" "网络测速"
+    print_menu_option "6" "格式化U盘、TF卡"
+    print_menu_option "7" "Docker"
+    print_menu_option "8" "Cockpit"
+    print_menu_option "9" "系统迁移"
+    print_menu_option "10" "Tailscale"
+
+    # 检查代理状态并显示
+    function check_proxy_status() {
+        local v2ray_running=false
+        local proxy_configured=false
+
+        # 检查v2ray服务是否运行
+        if systemctl is-active --quiet v2ray 2>/dev/null; then
+            v2ray_running=true
+        fi
+
+        # 检查代理是否在.bashrc中配置
+        if grep -q 'export.*_proxy=' ~/.bashrc; then
+            proxy_configured=true
+        fi
+
+        # 优先检查当前会话是否有代理环境变量
+        if [ -n "$https_proxy" ] || [ -n "$http_proxy" ] || [ -n "$all_proxy" ]; then
+            if [ "$v2ray_running" = true ]; then
+                echo "${GREEN}[活跃]${NC}"
+            else
+                echo "${YELLOW}[已配置但服务未运行]${NC}"
+            fi
+        # 其次检查是否在.bashrc中配置了但未加载到当前会话
+        elif [ "$proxy_configured" = true ]; then
+            if [ "$v2ray_running" = true ]; then
+                echo "${YELLOW}[配置未激活]${NC}"
+            else
+                echo "${YELLOW}[配置未激活,服务未运行]${NC}"
+            fi
+        else
+            echo "${RED}[未激活]${NC}"
+        fi
+    }
+
+    print_menu_option "11" "socks5服务功能 $(check_proxy_status)"
+
+    print_menu_separator
+
+    # 系统命令选项，使用简化字母命令
+    echo -e "  ${BOLD}${RED}[a]${NC} 系统更新和软件更新    ${BOLD}${RED}[b]${NC} 系统还原"
+    echo -e "  ${BOLD}${RED}[c]${NC} 更新脚本            ${BOLD}${RED}[d]${NC} 修改root密码"
+    echo -e "  ${BOLD}${RED}[e]${NC} 卸载脚本            ${BOLD}${RED}[f]${NC} 重启系统"
+    echo -e "  ${BOLD}${RED}[q]${NC} 退出"
 
     # 获取输入
+    echo
     read -e -p "请输入选项: " choice
 
     case $choice in
@@ -105,15 +219,18 @@ ${NC}"
         #常用功能菜单
         while true; do
             clear
-            echo -e "${GREEN}======  菜单 ======${NC}"
-            echo -e "${YELLOW}1.搜索文件${NC}"
-            echo -e "${YELLOW}2.重启网络服务${NC}"
-            echo -e "${YELLOW}3.清理缓存${NC}"
-            echo -e "${YELLOW}4.Swap设置${NC}"
-            echo -e "${YELLOW}5.粒子动态背景${NC}"
-            echo -e "${YELLOW}6.优化DNS${NC}"
-            echo -e "${RED}q.返回${NC}"
+            print_menu_header "常用功能"
 
+            print_menu_option "1" "搜索文件"
+            print_menu_option "2" "重启网络服务"
+            print_menu_option "3" "清理缓存"
+            print_menu_option "4" "Swap设置"
+            print_menu_option "5" "粒子动态背景"
+            print_menu_option "6" "优化DNS"
+            print_menu_option "7" "Nginx管理"
+            print_menu_option "q" "返回" $RED
+
+            echo
             read -e -p "请输入选项: " choice
 
             #搜索文件和文件夹
@@ -142,37 +259,273 @@ ${NC}"
             }
 
             function cleanup() {
-                # 清理 APT 缓存
-                sudo apt-get clean
+                clear
+                print_menu_header "系统清理工具"
 
-                # 移除无用的依赖项
-                sudo apt-get autoremove -y
+                # 获取磁盘使用状态
+                disk_usage=$(df -h / | awk 'NR==2 {print $5}')
+                disk_free=$(df -h / | awk 'NR==2 {print $4}')
+                echo -e "${CYAN}当前系统状态: 使用率 ${YELLOW}$disk_usage${CYAN} (剩余空间: ${GREEN}$disk_free${CYAN})${NC}\n"
 
-                # 删除旧版本的 Linux 内核
-                sudo apt-get purge -y $(dpkg -l | awk '/^ii linux-image-.*[0-9]/{print $2}' | grep -v "$(uname -r)")
+                print_menu_option "1" "标准清理 (安全清理缓存和临时文件)"
+                print_menu_option "2" "深度清理 (包括系统日志和备份)"
+                print_menu_option "3" "高级清理 (删除未使用的依赖和内核)"
+                print_menu_option "4" "优化服务 (禁用不必要的系统服务)"
+                print_menu_option "5" "全面系统清理 (执行所有清理操作)"
+                print_menu_option "q" "返回" $RED
 
-                # 清理临时文件
-                sudo rm -rf /tmp/*
+                echo
+                read -e -p "请选择清理级别: " clean_level
 
-                # 清理用户缓存
-                rm -rf ~/.cache
+                case "$clean_level" in
+                1) # 标准清理
+                    echo -e "\n${YELLOW}执行标准清理...${NC}"
+                    echo -e "${CYAN}清理APT缓存...${NC}"
+                    sudo apt-get clean
 
-                # 清理系统日志
-                sudo journalctl --vacuum-time=3d
+                    echo -e "${CYAN}清理临时文件...${NC}"
+                    sudo rm -rf /tmp/.[!.]* /tmp/..?* /tmp/*
 
-                # 清理旧备份文件
-                sudo rm -rf /var/backups/*
+                    echo -e "${CYAN}清理用户缓存...${NC}"
+                    rm -rf ~/.cache/*
 
-                # 清理不必要的临时文件
-                sudo rm -rf /var/tmp/*
+                    echo -e "${CYAN}清理回收站...${NC}"
+                    rm -rf ~/.local/share/Trash/*
 
-                # 清理用户的 Trash 目录
-                rm -rf ~/.local/share/Trash/*
+                    echo -e "${CYAN}清理软件包缓存...${NC}"
+                    sudo apt-get autoclean
 
-                # 清理软件包管理器的缓存
-                sudo apt-get autoclean
+                    # 获取清理后的磁盘使用情况
+                    disk_after=$(df -h / | awk 'NR==2 {print $4}')
+                    echo -e "\n${GREEN}✓ 标准清理完成!${NC}"
+                    echo -e "${CYAN}当前可用空间: $disk_after${NC}"
+                    ;;
 
-                echo -e "${GREEN}清理完成！${NC}"
+                2) # 深度清理
+                    echo -e "\n${YELLOW}执行深度清理...${NC}"
+
+                    # 先执行标准清理
+                    echo -e "${CYAN}执行标准清理步骤...${NC}"
+                    sudo apt-get clean
+                    sudo rm -rf /tmp/.[!.]* /tmp/..?* /tmp/*
+                    rm -rf ~/.cache/*
+                    rm -rf ~/.local/share/Trash/*
+                    sudo apt-get autoclean
+
+                    # 深度清理特有步骤
+                    echo -e "${CYAN}清理系统日志...${NC}"
+                    sudo journalctl --vacuum-time=3d
+
+                    echo -e "${CYAN}清理旧的备份文件...${NC}"
+                    sudo rm -rf /var/backups/*.old 2>/dev/null
+
+                    echo -e "${CYAN}清理旧的安装包...${NC}"
+                    sudo rm -rf /var/cache/apt/archives/*.deb
+
+                    echo -e "${CYAN}清理临时数据目录...${NC}"
+                    sudo rm -rf /var/tmp/.[!.]* /var/tmp/..?* /var/tmp/* 2>/dev/null
+
+                    echo -e "${CYAN}清理遗留的日志文件...${NC}"
+                    sudo find /var/log -type f -name "*.gz" -o -name "*.old" -o -name "*.1" | xargs sudo rm -f 2>/dev/null
+                    sudo find /var/log -type f -regex '.*\.[0-9]+\(\.gz\)?' | xargs sudo rm -f 2>/dev/null
+
+                    echo -e "\n${GREEN}✓ 深度清理完成!${NC}"
+                    ;;
+
+                3) # 高级清理
+                    echo -e "\n${YELLOW}执行高级清理 (依赖和内核)...${NC}"
+                    echo -e "${RED}警告: 此操作将移除未使用的软件包和旧内核，确认继续? (y/n)${NC}"
+                    read -e -p "" confirm
+                    if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                        echo -e "${CYAN}删除未使用的依赖项...${NC}"
+                        sudo apt-get autoremove -y
+
+                        echo -e "${CYAN}删除旧版本的Linux内核...${NC}"
+                        old_kernels=$(dpkg -l | awk '/^ii linux-image-.*[0-9]/{print $2}' | grep -v "$(uname -r)")
+                        if [ -n "$old_kernels" ]; then
+                            echo -e "${YELLOW}发现以下旧内核:${NC}"
+                            echo "$old_kernels"
+                            echo -e "${YELLOW}正在删除...${NC}"
+                            sudo apt-get purge -y $old_kernels
+                        else
+                            echo -e "${CYAN}未发现旧内核${NC}"
+                        fi
+
+                        echo -e "${CYAN}清理未完全卸载的软件包...${NC}"
+                        dpkg_removed=$(dpkg -l | grep "^rc" | awk '{print $2}')
+                        if [ -n "$dpkg_removed" ]; then
+                            echo -e "${YELLOW}发现以下未完全卸载的软件包:${NC}"
+                            echo "$dpkg_removed"
+                            echo -e "${YELLOW}正在清理...${NC}"
+                            sudo dpkg --purge $dpkg_removed
+                        else
+                            echo -e "${CYAN}未发现未完全卸载的软件包${NC}"
+                        fi
+
+                        echo -e "${CYAN}检查Snap包...${NC}"
+                        if command -v snap &>/dev/null; then
+                            # 保留当前及前一个版本，删除更旧的版本
+                            sudo snap list --all | awk '/disabled/{print $1, $3}' |
+                                while read snapname revision; do
+                                    sudo snap remove "$snapname" --revision="$revision"
+                                done
+                        fi
+
+                        echo -e "${CYAN}检查Flatpak残留...${NC}"
+                        if command -v flatpak &>/dev/null; then
+                            sudo flatpak uninstall --unused -y
+                        fi
+
+                        echo -e "\n${GREEN}✓ 高级清理完成!${NC}"
+                    else
+                        echo -e "${YELLOW}已取消高级清理${NC}"
+                    fi
+                    ;;
+
+                4) # 优化服务
+                    echo -e "\n${YELLOW}分析系统服务...${NC}"
+
+                    # 创建常见非必要服务列表
+                    declare -A services_desc=(
+                        ["bluetooth.service"]="蓝牙服务 - 如果不使用蓝牙设备可禁用"
+                        ["cups.service"]="打印服务 - 如果不需要打印功能可禁用"
+                        ["avahi-daemon.service"]="局域网设备发现服务 - 局域网内设备发现"
+                        ["ModemManager.service"]="调制解调器管理服务 - 如不使用调制解调器可禁用"
+                        ["whoopsie.service"]="Ubuntu崩溃报告服务 - 用于发送崩溃报告"
+                        ["snapd.service"]="Snap包管理服务 - 如不使用snap可禁用"
+                        ["apt-daily.service"]="APT自动更新服务 - 自动检查更新"
+                        ["apt-daily-upgrade.service"]="APT自动升级服务"
+                        ["multipathd.service"]="多路径设备管理服务 - 服务器存储多路径"
+                        ["speech-dispatcher.service"]="语音调度服务 - 语音合成"
+                    )
+
+                    # 列出正在运行的服务
+                    echo -e "${CYAN}检测非必要服务...${NC}"
+                    echo -e "${YELLOW}===================${NC}"
+
+                    running_services=()
+                    for service in "${!services_desc[@]}"; do
+                        if systemctl is-active --quiet "$service" 2>/dev/null; then
+                            running_services+=("$service")
+                            status="${GREEN}运行中${NC}"
+                        else
+                            status="${RED}已停止${NC}"
+                        fi
+                        echo -e "${CYAN}[$service]${NC} - ${services_desc[$service]} - $status"
+                    done
+
+                    if [ ${#running_services[@]} -eq 0 ]; then
+                        echo -e "\n${CYAN}未发现可优化的非必要服务${NC}"
+                    else
+                        echo -e "\n${YELLOW}发现以下非必要服务正在运行:${NC}"
+                        for ((i = 0; i < ${#running_services[@]}; i++)); do
+                            service=${running_services[$i]}
+                            echo -e "$((i + 1)). ${CYAN}${service}${NC} - ${services_desc[$service]}"
+                        done
+
+                        echo -e "\n${YELLOW}输入服务编号以禁用，多个服务用空格分隔 (例如: 1 3)，或按Enter跳过${NC}"
+                        read -e -p "要禁用的服务: " services_to_disable
+
+                        if [ -n "$services_to_disable" ]; then
+                            for num in $services_to_disable; do
+                                if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le ${#running_services[@]} ]; then
+                                    service=${running_services[$((num - 1))]}
+                                    echo -e "${YELLOW}正在禁用 $service...${NC}"
+                                    sudo systemctl stop "$service"
+                                    sudo systemctl disable "$service"
+                                    echo -e "${GREEN}✓ $service 已禁用${NC}"
+                                fi
+                            done
+                            echo -e "\n${GREEN}✓ 服务优化完成!${NC}"
+                        else
+                            echo -e "${YELLOW}未选择任何服务，跳过优化${NC}"
+                        fi
+                    fi
+                    ;;
+
+                5) # 全面系统清理
+                    echo -e "\n${YELLOW}执行全面系统清理...${NC}"
+                    echo -e "${RED}警告: 此操作将执行所有清理步骤，可能需要一些时间。确认继续? (y/n)${NC}"
+                    read -e -p "" confirm
+                    if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                        disk_usage_before=$(df -h / | awk 'NR==2 {print $4}')
+                        echo -e "${CYAN}清理前可用空间: $disk_usage_before${NC}"
+
+                        # 标准清理
+                        echo -e "\n${YELLOW}1. 执行标准清理...${NC}"
+                        sudo apt-get clean
+                        sudo rm -rf /tmp/.[!.]* /tmp/..?* /tmp/* 2>/dev/null
+                        rm -rf ~/.cache/* 2>/dev/null
+                        rm -rf ~/.local/share/Trash/* 2>/dev/null
+                        sudo apt-get autoclean
+
+                        # 深度清理
+                        echo -e "\n${YELLOW}2. 执行深度清理...${NC}"
+                        sudo journalctl --vacuum-time=3d
+                        sudo rm -rf /var/backups/*.old 2>/dev/null
+                        sudo rm -rf /var/cache/apt/archives/*.deb
+                        sudo rm -rf /var/tmp/.[!.]* /var/tmp/..?* /var/tmp/* 2>/dev/null
+                        sudo find /var/log -type f -name "*.gz" -o -name "*.old" -o -name "*.1" | xargs sudo rm -f 2>/dev/null
+                        sudo find /var/log -type f -regex '.*\.[0-9]+\(\.gz\)?' | xargs sudo rm -f 2>/dev/null
+
+                        # 高级清理
+                        echo -e "\n${YELLOW}3. 执行高级清理...${NC}"
+                        sudo apt-get autoremove -y
+
+                        old_kernels=$(dpkg -l | awk '/^ii linux-image-.*[0-9]/{print $2}' | grep -v "$(uname -r)")
+                        if [ -n "$old_kernels" ]; then
+                            sudo apt-get purge -y $old_kernels
+                        fi
+
+                        dpkg_removed=$(dpkg -l | grep "^rc" | awk '{print $2}')
+                        if [ -n "$dpkg_removed" ]; then
+                            sudo dpkg --purge $dpkg_removed
+                        fi
+
+                        # 清理搜索索引
+                        echo -e "\n${YELLOW}4. 清理搜索索引...${NC}"
+                        if [ -d ~/.cache/tracker ]; then
+                            rm -rf ~/.cache/tracker/* 2>/dev/null
+                        fi
+                        # 如果系统有mlocate，更新数据库
+                        if command -v updatedb &>/dev/null; then
+                            sudo updatedb
+                        fi
+
+                        # 清理缩略图
+                        echo -e "\n${YELLOW}5. 清理缩略图缓存...${NC}"
+                        rm -rf ~/.thumbnails/* 2>/dev/null
+                        rm -rf ~/.cache/thumbnails/* 2>/dev/null
+
+                        # 清理Firefox/Chrome缓存(如果存在)
+                        echo -e "\n${YELLOW}6. 清理浏览器缓存...${NC}"
+                        if [ -d ~/.mozilla/firefox ]; then
+                            find ~/.mozilla/firefox -name "*.sqlite" | xargs -I{} sqlite3 "{}" "VACUUM;"
+                        fi
+                        if [ -d ~/.config/google-chrome ]; then
+                            rm -rf ~/.config/google-chrome/Default/Cache/* 2>/dev/null
+                            rm -rf ~/.config/google-chrome/Default/Code\ Cache/* 2>/dev/null
+                        fi
+
+                        disk_usage_after=$(df -h / | awk 'NR==2 {print $4}')
+                        echo -e "\n${GREEN}✓ 全面系统清理完成!${NC}"
+                        echo -e "${CYAN}清理前可用空间: $disk_usage_before${NC}"
+                        echo -e "${CYAN}清理后可用空间: $disk_usage_after${NC}"
+                    else
+                        echo -e "${YELLOW}已取消全面系统清理${NC}"
+                    fi
+                    ;;
+
+                q | Q)
+                    return
+                    ;;
+
+                *)
+                    echo -e "${RED}无效的选择${NC}"
+                    ;;
+                esac
+
+                echo -e "\n${CYAN}清理操作已完成，系统现在更加整洁!${NC}"
             }
 
             # Swap设置脚本
@@ -258,9 +611,324 @@ EOF
                 echo -e "${GREEN}DNS修改成功cat /etc/resolv.conf查看${NC}"
             }
 
+            # Nginx管理函数
+            function nginx_manager() {
+                clear
+                print_menu_header "Nginx管理工具"
+
+                local nginx_installed=false
+                local nginx_running=false
+                local nginx_version=""
+
+                # 检查Nginx是否已安装
+                if command -v nginx &>/dev/null; then
+                    nginx_installed=true
+                    nginx_version=$(nginx -v 2>&1 | grep -oP "nginx/\K[0-9]+\.[0-9]+\.[0-9]+")
+
+                    # 检查Nginx状态
+                    if systemctl is-active --quiet nginx; then
+                        nginx_running=true
+                    fi
+                fi
+
+                # 显示Nginx状态
+                echo -e "${CYAN}Nginx状态:${NC}"
+                if [ "$nginx_installed" = true ]; then
+                    echo -e "  安装状态: ${GREEN}已安装${NC} (版本: $nginx_version)"
+                    if [ "$nginx_running" = true ]; then
+                        echo -e "  运行状态: ${GREEN}运行中${NC}"
+                    else
+                        echo -e "  运行状态: ${RED}已停止${NC}"
+                    fi
+                else
+                    echo -e "  安装状态: ${RED}未安装${NC}"
+                fi
+                echo
+
+                # 显示菜单选项
+                if [ "$nginx_installed" = false ]; then
+                    print_menu_option "1" "安装Nginx"
+                else
+                    if [ "$nginx_running" = true ]; then
+                        print_menu_option "1" "停止Nginx"
+                        print_menu_option "2" "重启Nginx"
+                    else
+                        print_menu_option "1" "启动Nginx"
+                    fi
+                    print_menu_option "3" "查看Nginx配置"
+                    print_menu_option "4" "检查Nginx配置语法"
+                    print_menu_option "5" "编辑Nginx配置"
+                    print_menu_option "6" "查看Nginx状态"
+                    print_menu_option "7" "查看访问日志"
+                    print_menu_option "8" "查看错误日志"
+                    print_menu_option "9" "管理站点配置"
+                fi
+                print_menu_option "q" "返回" $RED
+
+                echo
+                read -e -p "请输入选项: " nginx_choice
+
+                case "$nginx_choice" in
+                1)
+                    if [ "$nginx_installed" = false ]; then
+                        echo -e "${YELLOW}正在安装Nginx...${NC}"
+                        # 安装Nginx
+                        sudo apt-get update
+                        sudo apt-get install -y nginx
+
+                        # 检查安装结果
+                        if command -v nginx &>/dev/null; then
+                            echo -e "${GREEN}✓ Nginx安装成功${NC}"
+
+                            # 配置防火墙（如果存在）
+                            if command -v ufw &>/dev/null && sudo ufw status | grep -q "Status: active"; then
+                                echo -e "${YELLOW}配置防火墙规则...${NC}"
+                                sudo ufw allow 'Nginx HTTP'
+                                echo -e "${GREEN}✓ 防火墙规则已添加${NC}"
+                            fi
+
+                            # 启动Nginx
+                            sudo systemctl start nginx
+                            sudo systemctl enable nginx
+
+                            echo -e "${GREEN}✓ Nginx服务已启动并设为开机自启${NC}"
+                            echo -e "${CYAN}可通过 http://$IP 访问${NC}"
+                        else
+                            echo -e "${RED}✗ Nginx安装失败${NC}"
+                        fi
+                    else
+                        if [ "$nginx_running" = true ]; then
+                            echo -e "${YELLOW}正在停止Nginx...${NC}"
+                            sudo systemctl stop nginx
+                            echo -e "${GREEN}✓ Nginx已停止${NC}"
+                        else
+                            echo -e "${YELLOW}正在启动Nginx...${NC}"
+                            sudo systemctl start nginx
+                            echo -e "${GREEN}✓ Nginx已启动${NC}"
+                        fi
+                    fi
+                    ;;
+                2)
+                    if [ "$nginx_installed" = true ]; then
+                        echo -e "${YELLOW}正在重启Nginx...${NC}"
+                        sudo systemctl restart nginx
+                        echo -e "${GREEN}✓ Nginx已重启${NC}"
+                    fi
+                    ;;
+                3)
+                    if [ "$nginx_installed" = true ]; then
+                        echo -e "${YELLOW}Nginx主配置文件:${NC}"
+                        cat /etc/nginx/nginx.conf
+                        echo -e "\n${YELLOW}按任意键继续...${NC}"
+                        read -n 1 -s -r -p ""
+                    fi
+                    ;;
+                4)
+                    if [ "$nginx_installed" = true ]; then
+                        echo -e "${YELLOW}检查Nginx配置语法...${NC}"
+                        sudo nginx -t
+                        echo -e "\n${YELLOW}按任意键继续...${NC}"
+                        read -n 1 -s -r -p ""
+                    fi
+                    ;;
+                5)
+                    if [ "$nginx_installed" = true ]; then
+                        echo -e "${YELLOW}编辑Nginx配置文件...${NC}"
+                        if command -v nano &>/dev/null; then
+                            sudo nano /etc/nginx/nginx.conf
+                        elif command -v vim &>/dev/null; then
+                            sudo vim /etc/nginx/nginx.conf
+                        else
+                            echo -e "${RED}未找到编辑器，请安装nano或vim${NC}"
+                        fi
+                    fi
+                    ;;
+                6)
+                    if [ "$nginx_installed" = true ]; then
+                        echo -e "${YELLOW}Nginx状态:${NC}"
+                        sudo systemctl status nginx
+                        echo -e "\n${YELLOW}按任意键继续...${NC}"
+                        read -n 1 -s -r -p ""
+                    fi
+                    ;;
+                7)
+                    if [ "$nginx_installed" = true ]; then
+                        echo -e "${YELLOW}Nginx访问日志 (最新50行):${NC}"
+                        sudo tail -n 50 /var/log/nginx/access.log
+                        echo -e "\n${YELLOW}按任意键继续...${NC}"
+                        read -n 1 -s -r -p ""
+                    fi
+                    ;;
+                8)
+                    if [ "$nginx_installed" = true ]; then
+                        echo -e "${YELLOW}Nginx错误日志 (最新50行):${NC}"
+                        sudo tail -n 50 /var/log/nginx/error.log
+                        echo -e "\n${YELLOW}按任意键继续...${NC}"
+                        read -n 1 -s -r -p ""
+                    fi
+                    ;;
+                9)
+                    if [ "$nginx_installed" = true ]; then
+                        # 站点配置管理子菜单
+                        while true; do
+                            clear
+                            print_menu_header "Nginx站点管理"
+
+                            # 列出可用站点
+                            echo -e "${CYAN}可用站点配置:${NC}"
+                            sites_available=()
+                            i=1
+                            while read -r site_path; do
+                                site_name=$(basename "$site_path")
+                                sites_available+=("$site_name")
+
+                                # 检查站点是否已启用
+                                if [ -L "/etc/nginx/sites-enabled/$site_name" ]; then
+                                    status="${GREEN}已启用${NC}"
+                                else
+                                    status="${RED}已禁用${NC}"
+                                fi
+
+                                echo -e "$i. ${CYAN}$site_name${NC} - $status"
+                                ((i++))
+                            done < <(find /etc/nginx/sites-available -type f -name "*" | sort)
+
+                            echo
+                            print_menu_option "a" "创建新站点配置"
+                            print_menu_option "b" "启用/禁用站点"
+                            print_menu_option "c" "删除站点配置"
+                            print_menu_option "q" "返回" $RED
+
+                            echo
+                            read -e -p "请输入选项: " site_choice
+
+                            case "$site_choice" in
+                            a)
+                                read -e -p "输入新站点名称 (例如: mysite): " site_name
+                                if [ -n "$site_name" ]; then
+                                    # 创建配置文件
+                                    cat >"/tmp/${site_name}.conf" <<EOF
+server {
+    listen 80;
+    server_name ${site_name}.local;
+    
+    root /var/www/html/${site_name};
+    index index.html index.htm;
+    
+    location / {
+        try_files \$uri \$uri/ =404;
+    }
+    
+    access_log /var/log/nginx/${site_name}_access.log;
+    error_log /var/log/nginx/${site_name}_error.log;
+}
+EOF
+                                    # 创建网站目录
+                                    sudo mkdir -p /var/www/html/${site_name}
+                                    # 创建示例index.html
+                                    cat >"/tmp/index.html" <<EOF
+<!DOCTYPE html>
+<html>
+<head>
+    <title>${site_name}</title>
+</head>
+<body>
+    <h1>欢迎访问 ${site_name}</h1>
+    <p>此网站由Nginx提供服务</p>
+</body>
+</html>
+EOF
+                                    sudo mv "/tmp/index.html" "/var/www/html/${site_name}/index.html"
+                                    sudo mv "/tmp/${site_name}.conf" "/etc/nginx/sites-available/${site_name}"
+
+                                    # 提示是否启用站点
+                                    read -e -p "是否立即启用该站点? (y/n): " enable_site
+                                    if [[ "$enable_site" == "y" || "$enable_site" == "Y" ]]; then
+                                        sudo ln -sf "/etc/nginx/sites-available/${site_name}" "/etc/nginx/sites-enabled/${site_name}"
+                                        sudo nginx -t && sudo systemctl reload nginx
+                                        echo -e "${GREEN}✓ 站点已创建并启用${NC}"
+                                    else
+                                        echo -e "${GREEN}✓ 站点已创建但未启用${NC}"
+                                    fi
+                                fi
+                                ;;
+                            b)
+                                read -e -p "输入要启用/禁用的站点编号: " site_num
+                                if [[ "$site_num" =~ ^[0-9]+$ ]] && [ "$site_num" -ge 1 ] && [ "$site_num" -le ${#sites_available[@]} ]; then
+                                    site_name=${sites_available[$((site_num - 1))]}
+
+                                    # 检查站点状态并切换
+                                    if [ -L "/etc/nginx/sites-enabled/$site_name" ]; then
+                                        # 禁用站点
+                                        sudo rm "/etc/nginx/sites-enabled/$site_name"
+                                        echo -e "${GREEN}✓ 站点 $site_name 已禁用${NC}"
+                                    else
+                                        # 启用站点
+                                        sudo ln -sf "/etc/nginx/sites-available/$site_name" "/etc/nginx/sites-enabled/$site_name"
+                                        echo -e "${GREEN}✓ 站点 $site_name 已启用${NC}"
+                                    fi
+                                    # 重载Nginx
+                                    sudo nginx -t && sudo systemctl reload nginx
+                                else
+                                    echo -e "${RED}✗ 无效的站点编号${NC}"
+                                fi
+                                ;;
+                            c)
+                                read -e -p "输入要删除的站点编号: " site_num
+                                if [[ "$site_num" =~ ^[0-9]+$ ]] && [ "$site_num" -ge 1 ] && [ "$site_num" -le ${#sites_available[@]} ]; then
+                                    site_name=${sites_available[$((site_num - 1))]}
+
+                                    read -e -p "确定要删除站点 $site_name? (y/n): " confirm
+                                    if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                                        # 如果站点已启用，先禁用它
+                                        if [ -L "/etc/nginx/sites-enabled/$site_name" ]; then
+                                            sudo rm "/etc/nginx/sites-enabled/$site_name"
+                                        fi
+                                        # 删除配置文件
+                                        sudo rm "/etc/nginx/sites-available/$site_name"
+                                        echo -e "${GREEN}✓ 站点 $site_name 已删除${NC}"
+                                        # 提示是否删除网站文件
+                                        read -e -p "是否删除网站文件 /var/www/html/$site_name? (y/n): " delete_files
+                                        if [[ "$delete_files" == "y" || "$delete_files" == "Y" ]]; then
+                                            sudo rm -rf "/var/www/html/$site_name"
+                                            echo -e "${GREEN}✓ 网站文件已删除${NC}"
+                                        fi
+                                        # 重载Nginx
+                                        sudo nginx -t && sudo systemctl reload nginx
+                                    fi
+                                else
+                                    echo -e "${RED}✗ 无效的站点编号${NC}"
+                                fi
+                                ;;
+                            q | Q)
+                                break
+                                ;;
+                            *)
+                                echo -e "${RED}✗ 无效的选择${NC}"
+                                sleep 1
+                                ;;
+                            esac
+                            echo -e "\n${YELLOW}按任意键继续...${NC}"
+                            read -n 1 -s -r -p ""
+                        done
+                    fi
+                    ;;
+                q | Q)
+                    return
+                    ;;
+                *)
+                    echo -e "${RED}✗ 无效的选择${NC}"
+                    sleep 1
+                    ;;
+                esac
+            }
+
             case $choice in
             1)
                 search_files
+                echo
+                echo -e "${BLUE}按任意键继续...${NC}"
+                read -n 1 -s -r -p ""
                 ;;
             2)
                 sudo systemctl restart network-manager
@@ -271,28 +939,47 @@ EOF
                 else
                     echo -e "${RED}网络重启失败${NC}"
                 fi
+                echo
+                echo -e "${BLUE}按任意键继续...${NC}"
+                read -n 1 -s -r -p ""
                 ;;
             3)
                 cleanup
+                echo
+                echo -e "${BLUE}按任意键继续...${NC}"
+                read -n 1 -s -r -p ""
                 ;;
             4)
                 swap
+                echo
+                echo -e "${BLUE}按任意键继续...${NC}"
+                read -n 1 -s -r -p ""
                 ;;
             5)
                 backdrop
+                echo
+                echo -e "${BLUE}按任意键继续...${NC}"
+                read -n 1 -s -r -p ""
                 ;;
             6)
                 DNS
+                echo
+                echo -e "${BLUE}按任意键继续...${NC}"
+                read -n 1 -s -r -p ""
+                ;;
+            7)
+                nginx_manager
                 ;;
             q | Q)
                 break
                 ;;
             *)
-                echo "无效的选择，请重新输入"
+                echo -e "${RED}无效的选择，请重新输入${NC}"
+                echo
+                echo -e "${BLUE}按任意键继续...${NC}"
+                read -n 1 -s -r -p ""
                 ;;
             esac
-            echo "按任意键继续..."
-            read -n 1 -s -r -p ""
         done
         ;;
     2)
@@ -549,7 +1236,7 @@ EOF
                 # 安装类型
                 # 1 安装至当前 Transmission Web 所在目录
                 # 2 安装至 TRANSMISSION_WEB_HOME 环境变量指定的目录，参考：https://github.com/transmission/transmission/wiki/Environment-Variables#transmission-specific-variables
-                # 使用环境变量时，如果 transmission 不是当前用户运行的，则需要将 TRANSMISSION_WEB_HOME 添加至 /etc/profile 文件，以达到“永久”的目的
+                # 使用环境变量时，如果 transmission 不是当前用户运行的，则需要将 TRANSMISSION_WEB_HOME 添加至 /etc/profile 文件，以达到"永久"的目的
                 # 3 用户指定参数做为目录，如 sh install-tr-control.sh /usr/local/transmission/share/transmission
                 INSTALL_TYPE=-1
                 SKIP_SEARCH=0
@@ -1095,26 +1782,288 @@ EOF
         done
         ;;
     5)
-        # speedtest测速
-        if ! command -v speedtest &>/dev/null; then
-            echo -e "${YELLOW}Speedtest CLI is not installed${NC}"
+        # 网络测速菜单
+        while true; do
+            clear
+            print_menu_header "网络测速工具"
 
-            echo -e "${YELLOW}正在安装 Speedtest CLI...${NC}"
-            curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | sudo bash
-            sudo apt-get install speedtest
+            print_menu_option "1" "Speedtest测速 (标准模式)"
+            print_menu_option "2" "Speedtest测速 (简洁模式)"
+            print_menu_option "3" "Ping测试"
+            print_menu_option "4" "查看网络接口状态"
+            print_menu_option "5" "安装/更新 Speedtest CLI"
+            print_menu_option "q" "返回" $RED
 
-            if command -v speedtest &>/dev/null; then
-                echo -e "${GREEN}Speedtest CLI安装成功.${NC}"
-            else
-                echo -e "${RED}未能安装Speedtest CLI.${NC}"
-                exit 1
-            fi
-        else
-            echo -e "${GREEN}Speedtest CLI 已安装，正在测试网速...${NC}"
-            speedtest
-        fi
-        echo "按任意键继续..."
-        read -n 1 -s -r -p ""
+            echo
+            read -e -p "请输入选项: " speedtest_choice
+
+            # 确保Speedtest CLI已安装
+            function ensure_speedtest_installed() {
+                if ! command -v speedtest &>/dev/null; then
+                    echo -e "${YELLOW}Speedtest CLI未安装，正在安装...${NC}"
+
+                    # 备份原始源列表
+                    if [ -f /etc/apt/sources.list.d/speedtest.list ]; then
+                        sudo cp /etc/apt/sources.list.d/speedtest.list /etc/apt/sources.list.d/speedtest.list.bak
+                    fi
+
+                    # 安装Speedtest CLI
+                    if curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | sudo bash; then
+                        echo -e "${CYAN}软件源添加成功，正在安装...${NC}"
+                        if sudo apt-get install -y speedtest; then
+                            echo -e "${GREEN}✓ Speedtest CLI 安装成功!${NC}"
+                            return 0
+                        else
+                            echo -e "${RED}✗ Speedtest CLI 安装失败${NC}"
+                            return 1
+                        fi
+                    else
+                        echo -e "${RED}✗ 添加软件源失败${NC}"
+                        return 1
+                    fi
+                else
+                    return 0 # 已安装
+                fi
+            }
+
+            # 标准模式测速
+            function run_standard_speedtest() {
+                echo -e "${YELLOW}正在进行完整网络测速，请稍候...${NC}"
+                echo -e "${CYAN}这将测试您的下载、上传速度和网络延迟${NC}\n"
+
+                if ensure_speedtest_installed; then
+                    # 执行测速并捕获输出
+                    echo -e "${CYAN}测试开始 - $(date '+%Y-%m-%d %H:%M:%S')${NC}\n"
+
+                    # 等待动画函数
+                    speedtest_pid=""
+                    function show_spinner() {
+                        local spin='⣾⣽⣻⢿⡿⣟⣯⣷'
+                        local charwidth=3
+                        local i=0
+                        while kill -0 $speedtest_pid 2>/dev/null; do
+                            i=$(((i + 1) % ${#spin}))
+                            printf "${CYAN}%s${NC}" "${spin:$i:$charwidth}"
+                            printf "\r"
+                            sleep 0.2
+                        done
+                        printf "    \r" # 清除spinner
+                    }
+
+                    # 在后台运行speedtest，并在前台显示旋转动画
+                    speedtest --accept-license --accept-gdpr >speedtest_result.txt 2>&1 &
+                    speedtest_pid=$!
+                    show_spinner
+
+                    # 检查测试结果
+                    if [ -f "speedtest_result.txt" ]; then
+                        cat speedtest_result.txt
+                        rm speedtest_result.txt
+                        echo -e "\n${GREEN}✓ 测速完成!${NC}"
+                    else
+                        echo -e "${RED}✗ 测速失败${NC}"
+                    fi
+                fi
+            }
+
+            # 简洁模式测速
+            function run_simple_speedtest() {
+                echo -e "${YELLOW}正在进行简洁网络测速，请稍候...${NC}"
+
+                if ensure_speedtest_installed; then
+                    echo -e "${CYAN}测试开始 - $(date '+%Y-%m-%d %H:%M:%S')${NC}"
+
+                    # 执行测速并实时显示进度
+                    local result=$(speedtest --accept-license --accept-gdpr --format=json 2>/dev/null)
+
+                    if [ $? -eq 0 ]; then
+                        # 确保所需工具已安装
+                        local tools_missing=false
+
+                        # 检查jq
+                        if ! command -v jq &>/dev/null; then
+                            echo -e "${YELLOW}正在安装JSON解析工具(jq)...${NC}"
+                            sudo apt install -y jq || tools_missing=true
+                        fi
+
+                        # 检查bc
+                        if ! command -v bc &>/dev/null; then
+                            echo -e "${YELLOW}正在安装计算工具(bc)...${NC}"
+                            sudo apt install -y bc || tools_missing=true
+                        fi
+
+                        if [ "$tools_missing" = true ]; then
+                            echo -e "${RED}✗ 部分工具安装失败，结果可能不完整${NC}"
+                        fi
+
+                        if command -v jq &>/dev/null; then
+                            local ping=$(echo $result | jq -r '.ping.latency')
+                            local download=$(echo $result | jq -r '.download.bandwidth')
+                            local upload=$(echo $result | jq -r '.upload.bandwidth')
+                            local isp=$(echo $result | jq -r '.isp')
+                            local server=$(echo $result | jq -r '.server.name')
+                            local server_loc=$(echo $result | jq -r '.server.location')
+
+                            # 转换带宽单位 (bytes/s to Mbps)
+                            if command -v bc &>/dev/null; then
+                                download=$(echo "scale=2; $download * 8 / 1000000" | bc)
+                                upload=$(echo "scale=2; $upload * 8 / 1000000" | bc)
+                            else
+                                # 如果bc不可用，使用awk作为替代方案
+                                download=$(awk "BEGIN {printf \"%.2f\", $download * 8 / 1000000}")
+                                upload=$(awk "BEGIN {printf \"%.2f\", $upload * 8 / 1000000}")
+                            fi
+
+                            echo -e "\n${GREEN}=== 测速结果 ===${NC}"
+                            echo -e "${CYAN}ISP:${NC} $isp"
+                            echo -e "${CYAN}服务器:${NC} $server ($server_loc)"
+                            echo -e "${CYAN}Ping延迟:${NC} ${GREEN}${ping} ms${NC}"
+                            echo -e "${CYAN}下载速度:${NC} ${GREEN}${download} Mbps${NC}"
+                            echo -e "${CYAN}上传速度:${NC} ${GREEN}${upload} Mbps${NC}"
+                        else
+                            echo -e "${RED}✗ 无法安装jq解析工具${NC}"
+                            echo "$result" # 直接显示JSON
+                        fi
+
+                        echo -e "\n${GREEN}✓ 测速完成!${NC}"
+                    else
+                        echo -e "${RED}✗ 测速失败${NC}"
+                    fi
+                fi
+            }
+
+            # Ping测试
+            function run_ping_test() {
+                clear
+                echo -e "${YELLOW}Ping测试工具${NC}"
+                echo -e "${CYAN}此工具将测试您的网络连接延迟${NC}\n"
+
+                # 预设的目标服务器
+                local targets=(
+                    "www.baidu.com:百度"
+                    "www.qq.com:腾讯"
+                    "www.aliyun.com:阿里云"
+                    "1.1.1.1:Cloudflare DNS"
+                    "8.8.8.8:Google DNS"
+                )
+
+                echo -e "${GREEN}=== 预设目标 ===${NC}"
+                for i in "${!targets[@]}"; do
+                    local index=$((i + 1))
+                    local target=(${targets[$i]/:/ })
+                    echo -e "  ${BOLD}${YELLOW}[$index]${NC} ${target[1]} (${target[0]})"
+                done
+                echo -e "  ${BOLD}${YELLOW}[c]${NC} 自定义目标"
+                echo -e "  ${BOLD}${RED}[q]${NC} 返回"
+
+                echo
+                read -e -p "请选择目标: " target_choice
+
+                local host=""
+                local name=""
+
+                case "$target_choice" in
+                [1-9])
+                    local index=$((target_choice - 1))
+                    if [ $index -lt ${#targets[@]} ]; then
+                        local target=(${targets[$index]/:/ })
+                        host=${target[0]}
+                        name=${target[1]}
+                    else
+                        echo -e "${RED}无效的选择${NC}"
+                        sleep 1
+                        return
+                    fi
+                    ;;
+                c | C)
+                    read -e -p "请输入要Ping的主机名或IP: " custom_host
+                    host=$custom_host
+                    name="自定义目标"
+                    ;;
+                q | Q)
+                    return
+                    ;;
+                *)
+                    echo -e "${RED}无效的选择${NC}"
+                    sleep 1
+                    return
+                    ;;
+                esac
+
+                if [ -n "$host" ]; then
+                    echo -e "\n${YELLOW}正在Ping ${name} (${host})...${NC}"
+                    ping -c 10 $host
+
+                    echo -e "\n${GREEN}✓ Ping测试完成!${NC}"
+                fi
+            }
+
+            # 显示网络接口状态
+            function show_network_interfaces() {
+                clear
+                echo -e "${YELLOW}网络接口状态${NC}"
+                echo -e "${CYAN}显示所有活动网络接口的详细信息${NC}\n"
+
+                echo -e "${GREEN}=== 网络接口列表 ===${NC}"
+                ip -br addr
+
+                echo -e "\n${GREEN}=== 详细网络信息 ===${NC}"
+                ifconfig
+
+                echo -e "\n${GREEN}=== 路由表 ===${NC}"
+                ip route
+
+                echo -e "\n${GREEN}=== DNS配置 ===${NC}"
+                if [ -f "/etc/resolv.conf" ]; then
+                    cat /etc/resolv.conf
+                else
+                    echo -e "${RED}未找到DNS配置文件${NC}"
+                fi
+            }
+
+            # 安装/更新Speedtest CLI
+            function install_update_speedtest() {
+                echo -e "${YELLOW}正在安装/更新 Speedtest CLI...${NC}"
+
+                # 移除旧版本
+                if command -v speedtest &>/dev/null; then
+                    echo -e "${CYAN}移除旧版本...${NC}"
+                    sudo apt-get remove -y speedtest
+                fi
+
+                # 重新安装
+                ensure_speedtest_installed
+            }
+
+            # 处理用户选择
+            case "$speedtest_choice" in
+            1)
+                run_standard_speedtest
+                ;;
+            2)
+                run_simple_speedtest
+                ;;
+            3)
+                run_ping_test
+                ;;
+            4)
+                show_network_interfaces
+                ;;
+            5)
+                install_update_speedtest
+                ;;
+            q | Q)
+                break
+                ;;
+            *)
+                echo -e "${RED}无效的选择${NC}"
+                ;;
+            esac
+
+            echo
+            echo -e "${BLUE}按任意键继续...${NC}"
+            read -n 1 -s -r -p ""
+        done
         ;;
     6)
         # 调用格式化脚本
@@ -1682,101 +2631,465 @@ EOF
         ;;
 
     11)
-        # 图标
-        curl -o /var/www/html/img/png/httpsok.png https://raw.githubusercontent.com/LX-webo/hinas/main/httpsok.png
-
-        cat <<EOF >/var/www/html/icons_wan/httpsok.html
-            <li>
-                <a href="https://httpsok.com/login" target="_blank"><img class="shake" src="img/png/httpsok.png" /><strong>Httpsok</strong></a>
-            </li>
-EOF
-        echo -e "${GREEN}安装完成，刷新点击主页图标${NC}"
-        echo "按任意键继续..."
-        read -n 1 -s -r -p ""
-        ;;
-    12)
         # socks5服务功能
-    	while true; do
-        clear
-        echo -e "${GREEN}====== socks5服务功能 ====== ${NC}"
-        echo -e "${YELLOW}1. 搭建v2ray客户端${NC}"
-        echo -e "${YELLOW}2. 测试是否联通${NC}"
-        echo -e "${YELLOW}3. 重启v2ray${NC}"
-        echo -e "${YELLOW}4. 开启代理本机${NC}"
-        echo -e "${YELLOW}5. 关闭代理本机${NC}"
-	echo -e "${YELLOW}6. 测试本机代理${NC}"
-        echo -e "${YELLOW}7. 卸载服务${NC}"
-        echo -e "${RED}q. 返回${NC}"
-        read -e -p "请输入选项: " choice
+        while true; do
+            clear
+            print_menu_header "SOCKS5 服务功能"
 
-        function socks5() {
-            install-v2ray.sh --version v5.6.0
-            echo -e "${GREEN}安装完成！配置文件的位置：/usr/local/etc/v2ray/config.json${NC}"
-            echo -e "${GREEN}编辑修改保存这个配置文件后，输入以下命令重启客户端服务：${NC}"
-            echo -e "${GREEN}systemctl daemon-reload${NC}"
-            echo -e "${GREEN}systemctl restart v2ray${NC}"
-        }
+            print_menu_option "1" "搭建v2ray客户端"
+            print_menu_option "2" "测试是否联通"
+            print_menu_option "3" "重启v2ray"
+            print_menu_option "4" "开启代理本机"
+            print_menu_option "5" "关闭代理本机"
+            print_menu_option "6" "测试本机代理"
+            print_menu_option "7" "卸载服务"
+            print_menu_option "q" "返回" $RED
 
-        function test() {
-            curl --socks5 127.0.0.1:10808 google.com
-        }
+            echo
+            read -e -p "请输入选项: " choice
 
-        function restart() {
-            systemctl restart v2ray
-            echo -e "${GREEN}重启成功${NC}"
-        }
+            # v2ray 安装函数
+            function socks5_install() {
+                echo -e "${YELLOW}正在安装v2ray客户端 (版本v5.6.0)...${NC}"
+                if command -v install-v2ray.sh &>/dev/null; then
+                    install-v2ray.sh --version v5.6.0
 
-        function on() {
-    	echo 'export https_proxy="127.0.0.1:10809"' >> ~/.bashrc
-    	source ~/.bashrc
-    	echo -e "${GREEN}代理已设置为永久，重新打开终端生效。${NC}"
-	}
+                    if systemctl is-active --quiet v2ray; then
+                        echo -e "\n${GREEN}✓ v2ray安装成功并已启动!${NC}"
+                        echo -e "\n${CYAN}配置文件位置: /usr/local/etc/v2ray/config.json${NC}"
+                        echo -e "${CYAN}配置文件修改后，运行以下命令使其生效:${NC}"
+                        echo -e "  ${WHITE}systemctl daemon-reload${NC}"
+                        echo -e "  ${WHITE}systemctl restart v2ray${NC}"
+                    else
+                        echo -e "\n${RED}✗ v2ray安装完成但服务未能启动${NC}"
+                        echo -e "${YELLOW}请检查配置文件是否正确${NC}"
+                    fi
+                else
+                    echo -e "${RED}✗ 安装脚本不存在，请确认系统环境${NC}"
+                fi
+            }
 
-        function off() {
-    	sed -i '/export https_proxy="127.0.0.1:10809"/d' ~/.bashrc
-    	source ~/.bashrc
-    	echo -e "${GREEN}代理已从 .bashrc 中移除，重新打开终端生效。${NC}"
-	}
- 
-	function test0() {
-    	curl https://google.com
-	}
- 
-        function uninstall() {
-            install-v2ray.sh --remove
-            rm /usr/local/etc/v2ray/config.json
-            echo -e "${GREEN}卸载成功${NC}"
-        }
+            # 连接测试函数
+            function socks5_test() {
+                echo -e "${YELLOW}正在测试SOCKS5连接 (127.0.0.1:10808)...${NC}"
+                echo -e "${CYAN}尝试连接到google.com...${NC}\n"
 
-        case "$choice" in
-            1) socks5 ;;
-            2) test ;;
-            3) restart ;;
-            4) on ;;
-            5) off ;;
-            6) test0 ;;
-            7) uninstall ;;   
-            q) break ;;
-            *) echo "无效选项，请重试" ;;
-        esac
+                timeout 10 curl --silent --show-error --socks5 127.0.0.1:10808 -I https://www.google.com &>/dev/null
 
-        read -e -p "按回车继续..." dummy
-    done
-    ;;
+                if [ $? -eq 0 ]; then
+                    echo -e "${GREEN}✓ 连接测试成功!${NC}"
+                    echo -e "${GREEN}SOCKS5代理正常工作${NC}"
+                else
+                    echo -e "${RED}✗ 连接测试失败!${NC}"
+                    echo -e "${YELLOW}可能的原因:${NC}"
+                    echo -e "  - v2ray服务未运行 (检查: systemctl status v2ray)"
+                    echo -e "  - 配置文件有误 (检查: /usr/local/etc/v2ray/config.json)"
+                    echo -e "  - 代理上游连接失败 (检查配置中的服务器地址)"
+                fi
+            }
 
-    update)
+            # 重启v2ray函数
+            function socks5_restart() {
+                echo -e "${YELLOW}正在重启v2ray服务...${NC}"
+
+                # 检查服务是否存在
+                if ! systemctl list-unit-files | grep -q v2ray; then
+                    echo -e "${RED}✗ v2ray服务不存在，请先安装${NC}"
+                    return 1
+                fi
+
+                # 保存重启前状态
+                local was_active=false
+                if systemctl is-active --quiet v2ray; then
+                    was_active=true
+                fi
+
+                # 执行重启
+                sudo systemctl restart v2ray
+                sleep 2 # 给服务一些启动时间
+
+                # 检查重启后状态
+                if systemctl is-active --quiet v2ray; then
+                    echo -e "${GREEN}✓ v2ray服务重启成功${NC}"
+                    systemctl status v2ray --no-pager | grep "Active:"
+                    return 0
+                else
+                    echo -e "${RED}✗ 重启失败，服务未能正常启动${NC}"
+                    echo -e "${YELLOW}正在检查可能的错误:${NC}"
+
+                    # 配置文件检查
+                    if [ -f "/usr/local/etc/v2ray/config.json" ]; then
+                        if ! jq . "/usr/local/etc/v2ray/config.json" &>/dev/null; then
+                            echo -e "${RED}✗ 配置文件JSON格式错误${NC}"
+                        fi
+                    else
+                        echo -e "${RED}✗ 配置文件不存在${NC}"
+                    fi
+
+                    # 显示最近的日志
+                    echo -e "\n${YELLOW}服务日志 (最近10行):${NC}"
+                    sudo journalctl -u v2ray -n 10 --no-pager
+
+                    # 如果本来是启动的，现在挂了，尝试恢复之前的状态
+                    if [ "$was_active" = true ]; then
+                        echo -e "\n${YELLOW}尝试恢复之前的运行状态...${NC}"
+                        sudo systemctl start v2ray
+                    fi
+
+                    return 1
+                fi
+            }
+
+            # 开启系统代理
+            function socks5_enable_proxy() {
+                echo -e "${YELLOW}正在设置系统代理...${NC}"
+
+                # 立即设置当前会话的代理环境变量
+                export https_proxy="127.0.0.1:10809"
+                export http_proxy="127.0.0.1:10809"
+                export all_proxy="socks5://127.0.0.1:10808"
+
+                # 检查代理是否已永久设置
+                if grep -q 'export https_proxy="127.0.0.1:10809"' ~/.bashrc; then
+                    echo -e "${GREEN}✓ 代理已激活（当前会话和永久配置）${NC}"
+                else
+                    # 添加代理设置到.bashrc实现永久生效
+                    echo 'export https_proxy="127.0.0.1:10809"' >>~/.bashrc
+                    echo 'export http_proxy="127.0.0.1:10809"' >>~/.bashrc
+                    echo 'export all_proxy="socks5://127.0.0.1:10808"' >>~/.bashrc
+
+                    echo -e "${GREEN}✓ 代理已激活（当前会话）${NC}"
+                    echo -e "${GREEN}✓ 已添加到永久配置（.bashrc）${NC}"
+                fi
+
+                # 显示当前活动的代理设置
+                echo -e "\n${CYAN}当前代理设置:${NC}"
+                echo -e "  https_proxy = ${https_proxy}"
+                echo -e "  http_proxy = ${http_proxy}"
+                echo -e "  all_proxy = ${all_proxy}"
+            }
+
+            # 关闭系统代理
+            function socks5_disable_proxy() {
+                echo -e "${YELLOW}正在关闭系统代理...${NC}"
+                local changes_made=false
+
+                # 1. 先清除当前会话的代理设置
+                if [ -n "$https_proxy" ] || [ -n "$http_proxy" ] || [ -n "$all_proxy" ]; then
+                    unset https_proxy
+                    unset http_proxy
+                    unset all_proxy
+                    changes_made=true
+                    echo -e "${GREEN}✓ 已清除当前会话的代理环境变量${NC}"
+                fi
+
+                # 2. 从.bashrc中移除永久配置
+                if grep -q 'export.*_proxy=' ~/.bashrc; then
+                    # 创建备份
+                    cp ~/.bashrc ~/.bashrc.proxy.bak
+
+                    # 移除所有代理设置
+                    sed -i '/export.*_proxy=/d' ~/.bashrc
+                    changes_made=true
+                    echo -e "${GREEN}✓ 已从永久配置(.bashrc)中移除代理设置${NC}"
+                    echo -e "${CYAN}   备份已保存到 ~/.bashrc.proxy.bak${NC}"
+                fi
+
+                if [ "$changes_made" = false ]; then
+                    echo -e "${YELLOW}未发现任何代理设置，无需操作${NC}"
+                else
+                    # 验证当前状态
+                    echo -e "\n${CYAN}当前代理状态:${NC}"
+                    if [ -z "$https_proxy" ] && [ -z "$http_proxy" ] && [ -z "$all_proxy" ]; then
+                        echo -e "${GREEN}✓ 已确认当前会话中无代理环境变量${NC}"
+                    else
+                        echo -e "${RED}✗ 警告: 一些代理变量仍然存在${NC}"
+                    fi
+                fi
+            }
+
+            # 测试系统代理
+            function socks5_test_system_proxy() {
+                echo -e "${YELLOW}正在测试系统代理...${NC}"
+                local proxy_status="未设置"
+                local connection_status="未知"
+                local curl_output=""
+                local temp_file="/tmp/proxy_test_$$.tmp"
+
+                # 1. 先检查代理环境变量是否在当前会话中存在
+                if [ -n "$https_proxy" ] || [ -n "$http_proxy" ] || [ -n "$all_proxy" ]; then
+                    echo -e "${CYAN}当前会话检测到以下代理环境变量:${NC}"
+                    [ -n "$https_proxy" ] && echo -e "  https_proxy = ${https_proxy}"
+                    [ -n "$http_proxy" ] && echo -e "  http_proxy = ${http_proxy}"
+                    [ -n "$all_proxy" ] && echo -e "  all_proxy = ${all_proxy}"
+                    proxy_status="已设置"
+                else
+                    echo -e "${YELLOW}当前会话未检测到代理环境变量${NC}"
+
+                    # 检查.bashrc中是否有配置但未加载
+                    if grep -q 'export.*_proxy=' ~/.bashrc; then
+                        echo -e "${YELLOW}提示: 在.bashrc中发现代理设置，但在当前会话中未激活${NC}"
+                        echo -e "${YELLOW}运行 'source ~/.bashrc' 或选择选项4重新激活代理${NC}"
+                    fi
+                fi
+
+                # 2. 检查v2ray服务状态
+                echo -e "\n${CYAN}检查v2ray服务状态:${NC}"
+                if systemctl is-active --quiet v2ray 2>/dev/null; then
+                    echo -e "  v2ray服务: ${GREEN}运行中${NC}"
+                else
+                    echo -e "  v2ray服务: ${RED}未运行${NC}"
+                    echo -e "${YELLOW}提示: 即使设置了环境变量，没有运行的v2ray服务也无法提供代理功能${NC}"
+                    echo -e "${YELLOW}请使用选项3重启v2ray服务${NC}"
+                fi
+
+                # 3. 实际连接测试
+                echo -e "\n${CYAN}正在测试连接到google.com...${NC}"
+                echo -e "(测试过程可能需要几秒钟...)"
+
+                # 使用curl测试连接，将输出存入临时文件
+                timeout 15 curl --silent --show-error -I https://www.google.com >"$temp_file" 2>&1
+                local curl_result=$?
+
+                if [ $curl_result -eq 0 ]; then
+                    # 连接成功
+                    local status_code=$(grep -E "^HTTP" "$temp_file" | awk '{print $2}')
+                    echo -e "${GREEN}✓ 连接测试成功! (HTTP状态码: $status_code)${NC}"
+                    connection_status="成功"
+
+                    # 检查抓取到的内容是否是谷歌页面
+                    if grep -q "Server: gws" "$temp_file"; then
+                        echo -e "${GREEN}✓ 确认连接到谷歌服务器${NC}"
+                    else
+                        echo -e "${YELLOW}⚠ 已连接，但可能不是谷歌的服务器${NC}"
+                    fi
+                else
+                    # 连接失败
+                    echo -e "${RED}✗ 连接测试失败!${NC}"
+                    connection_status="失败"
+
+                    # 错误诊断
+                    echo -e "${YELLOW}详细诊断:${NC}"
+
+                    # 检查超时问题
+                    if [ $curl_result -eq 124 ]; then
+                        echo -e "  - ${RED}连接超时${NC} - 代理可能速度太慢或无法到达目标"
+                    fi
+
+                    # 测试DNS解析
+                    echo -e "  - 检查DNS解析: "
+                    if host www.google.com &>/dev/null; then
+                        echo -e "    ${GREEN}DNS正常${NC} - 可以解析域名"
+                    else
+                        echo -e "    ${RED}DNS问题${NC} - 无法解析域名"
+                    fi
+
+                    # 检查是否安装了host命令
+                    if ! command -v host &>/dev/null; then
+                        echo -e "  - 安装DNS工具以进行更好的诊断..."
+                        sudo apt-get install -y dnsutils &>/dev/null
+                    fi
+
+                    # 检查本地连接
+                    echo -e "  - 检查本地代理: "
+                    if curl --silent --connect-timeout 5 --socks5 127.0.0.1:10808 -I http://localhost &>/dev/null; then
+                        echo -e "    ${GREEN}本地代理服务正常${NC}"
+                    else
+                        echo -e "    ${RED}本地代理服务问题${NC} - 无法连接到127.0.0.1:10808"
+                    fi
+                fi
+
+                # 清理临时文件
+                rm -f "$temp_file"
+
+                # 总结
+                echo -e "\n${CYAN}=== 测试总结 ===${NC}"
+                echo -e "代理环境变量: ${proxy_status}"
+                echo -e "v2ray服务: $(systemctl is-active --quiet v2ray 2>/dev/null && echo "运行中" || echo "未运行")"
+                echo -e "连接测试: ${connection_status}"
+
+                if [ "$connection_status" = "失败" ]; then
+                    echo -e "\n${YELLOW}建议解决步骤:${NC}"
+                    echo -e "1. 使用选项4重新激活代理环境变量"
+                    echo -e "2. 使用选项3重启v2ray服务"
+                    echo -e "3. 检查v2ray配置文件 (/usr/local/etc/v2ray/config.json)"
+                fi
+            }
+
+            # 卸载服务
+            function socks5_uninstall() {
+                echo -e "${YELLOW}即将卸载v2ray服务...${NC}"
+                echo -e "${RED}此操作将删除v2ray服务及其配置文件${NC}"
+                read -e -p "是否继续? (y/n): " confirm
+
+                if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                    echo -e "${YELLOW}正在卸载v2ray...${NC}"
+
+                    # 检查卸载脚本是否存在
+                    if command -v install-v2ray.sh &>/dev/null; then
+                        install-v2ray.sh --remove
+
+                        # 删除配置文件
+                        if [ -f "/usr/local/etc/v2ray/config.json" ]; then
+                            rm -f /usr/local/etc/v2ray/config.json
+                            echo -e "${CYAN}已删除配置文件${NC}"
+                        fi
+
+                        # 检查是否有遗留服务
+                        if systemctl list-unit-files | grep -q v2ray; then
+                            echo -e "${YELLOW}检测到服务文件残留，尝试清理...${NC}"
+                            sudo systemctl disable v2ray
+                            sudo rm -f /etc/systemd/system/v2ray.service
+                            sudo systemctl daemon-reload
+                        fi
+
+                        echo -e "${GREEN}✓ v2ray已成功卸载${NC}"
+                    else
+                        echo -e "${RED}✗ 卸载脚本不存在${NC}"
+                        echo -e "${YELLOW}尝试手动删除...${NC}"
+
+                        # 停止并禁用服务
+                        if systemctl list-unit-files | grep -q v2ray; then
+                            sudo systemctl stop v2ray
+                            sudo systemctl disable v2ray
+                            sudo rm -f /etc/systemd/system/v2ray.service
+                            sudo systemctl daemon-reload
+                        fi
+
+                        # 删除二进制文件
+                        sudo rm -rf /usr/local/bin/v2ray
+                        sudo rm -rf /usr/local/etc/v2ray
+                        sudo rm -rf /usr/local/share/v2ray
+
+                        echo -e "${GREEN}✓ v2ray已手动清理${NC}"
+                    fi
+
+                    # 清理代理设置
+                    socks5_disable_proxy
+                else
+                    echo -e "${YELLOW}卸载已取消${NC}"
+                fi
+            }
+
+            # 处理用户选择
+            case "$choice" in
+            1)
+                socks5_install
+                ;;
+            2)
+                socks5_test
+                ;;
+            3)
+                socks5_restart
+                ;;
+            4)
+                socks5_enable_proxy
+                ;;
+            5)
+                socks5_disable_proxy
+                ;;
+            6)
+                socks5_test_system_proxy
+                ;;
+            7)
+                socks5_uninstall
+                ;;
+            q | Q)
+                break
+                ;;
+            *)
+                echo -e "${RED}无效选项，请重试${NC}"
+                ;;
+            esac
+
+            echo
+            echo -e "${BLUE}按回车继续...${NC}"
+            read -e -p "" dummy
+        done
+        ;;
+
+    a | A | update)
+        echo -e "${YELLOW}正在更新系统...${NC}"
+
+        # 优化系统更新逻辑
+        echo -e "${CYAN}1. 更新软件源...${NC}"
         sudo apt-get update
-	sudo apt-get upgrade
+
+        # 检查可用更新数量
+        updates_available=$(apt list --upgradable 2>/dev/null | grep -c upgradable)
+        echo -e "${CYAN}发现 ${YELLOW}$updates_available${CYAN} 个可用更新${NC}"
+
+        if [ $updates_available -gt 0 ]; then
+            echo -e "${CYAN}2. 安装更新...${NC}"
+            sudo apt-get upgrade -y
+
+            # 检查是否有发行版更新
+            dist_upgrade_needed=$(apt-get --simulate dist-upgrade | grep -c "^Inst")
+            if [ $dist_upgrade_needed -gt 0 ]; then
+                echo -e "${YELLOW}发现系统级更新，是否安装？(y/n)${NC}"
+                read -e -p "(y/n): " upgrade_response
+                if [[ "$upgrade_response" == "y" || "$upgrade_response" == "Y" ]]; then
+                    echo -e "${CYAN}3. 安装系统级更新...${NC}"
+                    sudo apt-get dist-upgrade -y
+                fi
+            fi
+
+            echo -e "${CYAN}4. 清理不再需要的依赖...${NC}"
+            sudo apt-get autoremove -y
+
+            echo -e "${GREEN}✓ 系统更新完成！${NC}"
+        else
+            echo -e "${GREEN}✓ 系统已是最新！${NC}"
+        fi
         ;;
 
-    caidanu)
-        renew-caidan
+    c | C | caidanu)
+        echo -e "${YELLOW}正在更新脚本...${NC}"
+
+        # 检查网络连接
+        if ! ping -c 1 github.com &>/dev/null; then
+            echo -e "${RED}✗ 无法连接到GitHub，请检查网络连接${NC}"
+            read -e -p "是否继续尝试更新？(y/n): " continue_update
+            if [[ "$continue_update" != "y" && "$continue_update" != "Y" ]]; then
+                echo -e "${YELLOW}更新已取消${NC}"
+                return
+            fi
+        fi
+
+        # 创建备份
+        backup_path="/etc/caidan/caidan.sh.backup-$(date +%Y%m%d%H%M%S)"
+        if [ -f "/etc/caidan/caidan.sh" ]; then
+            cp /etc/caidan/caidan.sh "$backup_path"
+            echo -e "${CYAN}已创建备份: $backup_path${NC}"
+        fi
+
+        # 更新脚本
+        echo -e "${CYAN}从GitHub下载最新版本...${NC}"
+        if curl -s -o /etc/caidan/caidan.sh.new https://raw.githubusercontent.com/LeoJyenn/hinas/refs/heads/main/caidan.sh; then
+            # 检查文件完整性
+            if [ -f "/etc/caidan/caidan.sh.new" ] && [ -s "/etc/caidan/caidan.sh.new" ]; then
+                chmod +x /etc/caidan/caidan.sh.new
+                mv /etc/caidan/caidan.sh.new /etc/caidan/caidan.sh
+                ln -sf /etc/caidan/caidan.sh /usr/bin/caidan
+                echo -e "${GREEN}✓ 脚本更新成功，重新执行 [caidan] 生效${NC}"
+            else
+                echo -e "${RED}✗ 下载的文件不完整${NC}"
+                if [ -f "$backup_path" ]; then
+                    echo -e "${YELLOW}正在恢复备份...${NC}"
+                    cp "$backup_path" /etc/caidan/caidan.sh
+                fi
+            fi
+        else
+            echo -e "${RED}✗ 更新失败，网络错误或GitHub不可访问${NC}"
+        fi
+        exit 0
         ;;
-	
-    caidanun)
+
+    e | E | caidanun)
         unInstall-caidan
         ;;
-    0)
+
+    b | B | 0)
         # 系统还原
         echo -e "${RED}警告:此操作将还原系统,请做好资料备份，是否要继续？(y/n)${NC}"
         read -e -p "(y/n): " response
@@ -1788,27 +3101,37 @@ EOF
         else
             echo -e "${RED}无效的选择${NC}"
         fi
-        echo "按任意键继续..."
+        echo
+        echo -e "${BLUE}按任意键继续...${NC}"
         read -n 1 -s -r -p ""
         ;;
-    w | W)
+
+    d | D | pw | PW)
         # 修改 root 密码
+        echo -e "${YELLOW}正在修改root密码...${NC}"
         sudo passwd root
-        echo "按任意键继续..."
+        echo
+        echo -e "${BLUE}按任意键继续...${NC}"
         read -n 1 -s -r -p ""
         ;;
-    r | R)
+
+    f | F | r | R)
         # 重启系统
+        echo -e "${YELLOW}系统即将重启...${NC}"
+        echo -e "${CYAN}将在5秒后重启，按Ctrl+C取消...${NC}"
+        sleep 5
         sudo reboot
         ;;
+
     q | Q)
         # 退出
         echo -e "${RED}已退出...${NC}"
-        exit 1
+        exit 0
         ;;
     *)
         echo -e "${RED}无效的选择${NC}"
-        echo "按任意键继续..."
+        echo
+        echo -e "${BLUE}按任意键继续...${NC}"
         read -n 1 -s -r -p ""
         ;;
     esac
