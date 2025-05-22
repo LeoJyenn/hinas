@@ -17,7 +17,7 @@ Hinas 是一组面向 Hinas环境的Bash工具，旨在帮助用户，特别是�
 
 ```bash
 # 使用curl一键下载并安装
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/LeoJyenn/hinas/main/caidan.sh)" -- --download
+curl -fsSL https://raw.githubusercontent.com/LeoJyenn/hinas/main/caidan.sh | bash -s caidan
 ```
 
 安装完成后，可以在任何目录使用以下命令打开工具菜单：
