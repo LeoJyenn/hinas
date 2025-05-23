@@ -1079,7 +1079,7 @@ EOF
                         echo -e "${GREEN}✓ Samba服务重启成功!${NC}"
                         echo -e "${GREEN}✓ USB共享文件夹设置完成!${NC}"
                         echo -e "\n${CYAN}使用方法:${NC}"
-                        echo -e "在Windows文件管理器地址栏输入: \\\\$IP"
+                        echo -e "在Windows文件管理器地址栏输入: \\\\\\\\$IP"
                         echo -e "即可访问您的共享文件夹: $share_name\n"
                     else
                         echo -e "${RED}✗ Samba服务重启失败，请检查配置${NC}"
