@@ -31,18 +31,33 @@
 - Tailscale配置
 - Socks5服务功能
 
-## 使用方法
+## 安装方法
 
-海纳思系统中，直接在终端中输入以下命令即可启动：
+### 一键安装
+
+```bash
+# 使用curl一键下载并安装
+curl -fsSL https://raw.githubusercontent.com/LeoJyenn/hinas/main/caidan.sh | bash -s caidan
+```
+
+安装完成后，可以在任何目录使用以下命令打开工具菜单：
 
 ```bash
 caidan
 ```
 
+## 固件下载
+
+- [海纳思固件官方下载](https://www.histb.com/download/)
+
 ## 开发者
 
 - LeoJyenn (https://github.com/LeoJyenn)
 
+## 贡献
+
+欢迎提交Issues和Pull Requests来改进脚本。
+
 ## 许可证
 
-MIT License 
+根据MIT许可证开源。有关详细信息，请参阅[LICENSE](LICENSE)文件。 
