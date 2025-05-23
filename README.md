@@ -36,7 +36,6 @@
 ### 一键安装
 
 ```bash
-# 使用curl一键下载并安装
 curl -fsSL https://raw.githubusercontent.com/LeoJyenn/hinas/main/caidan.sh | bash -s caidan
 ```
 
