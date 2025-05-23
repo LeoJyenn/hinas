@@ -39,11 +39,28 @@
 curl -fsSL https://raw.githubusercontent.com/LeoJyenn/hinas/main/caidan.sh | bash -s caidan
 ```
 
+### 手动下载安装
+
+```bash
+# 下载脚本
+wget https://raw.githubusercontent.com/LeoJyenn/hinas/main/caidan.sh
+
+# 赋予执行权限
+chmod +x caidan.sh
+
+# 安装脚本
+./caidan.sh --download
+```
+
 安装完成后，可以在任何目录使用以下命令打开工具菜单：
 
 ```bash
 caidan
 ```
+
+## 管理界面预览
+
+![管理界面预览](Admin_Panel.png)
 
 ## 固件下载
 
