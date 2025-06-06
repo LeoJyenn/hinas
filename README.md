@@ -68,7 +68,7 @@ caidan
 
 ## 开发者
 
-- LeoJyenn (https://github.com/LeoJyenn)
+- [LeoJyenn](https://github.com/LeoJyenn)
 
 ## 贡献
 
