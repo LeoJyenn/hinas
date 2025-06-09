@@ -3520,13 +3520,6 @@ EOF
         
         # 显示当前版本
         echo -e "${CYAN}当前版本: ${GREEN}v${SCRIPT_VERSION}${NC}"
-        
-        # 创建备份
-        backup_path="/etc/caidan/caidan.sh.backup-$(date +%Y%m%d%H%M%S)"
-        if [ -f "/etc/caidan/caidan.sh" ]; then
-            cp /etc/caidan/caidan.sh "$backup_path"
-            echo -e "${CYAN}已创建备份: $backup_path${NC}"
-        fi
 
         # 检查网络连接
         echo -e "${CYAN}检查网络连接...${NC}"
@@ -3610,19 +3603,10 @@ EOF
                     echo -e "${GREEN}✓ 版本已从 v${SCRIPT_VERSION} 更新至 v${NEW_VERSION}${NC}"
                 fi
             else
-                echo -e "${RED}✗ 下载的文件不完整${NC}"
-                if [ -f "$backup_path" ]; then
-                    echo -e "${YELLOW}正在恢复备份...${NC}"
-                    cp "$backup_path" /etc/caidan/caidan.sh
-                fi
+                echo -e "${RED}✗ 下载的文件不完整，更新失败${NC}"
             fi
         else
             echo -e "${RED}✗ 更新失败，网络错误或GitHub不可访问${NC}"
-            echo -e "${YELLOW}恢复原始文件...${NC}"
-            if [ -f "$backup_path" ]; then
-                cp "$backup_path" /etc/caidan/caidan.sh
-                echo -e "${GREEN}已恢复原始文件${NC}"
-            fi
         fi
         exit 0
         ;;
