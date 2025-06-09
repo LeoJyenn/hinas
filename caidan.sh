@@ -1,4 +1,6 @@
 #!/bin/bash
+# 设置脚本版本号
+SCRIPT_VERSION="1.0.0"
 original_lc_all=$LC_ALL
 
 # 定义main函数，确保脚本被调用时执行主菜单
@@ -129,6 +131,50 @@ function unInstall-caidan() {
     fi
     echo "按任意键继续..."
     read -n 1 -s -r -p ""
+}
+
+# 获取远程脚本版本号
+function get_remote_version() {
+    local remote_version=""
+    remote_version=$(curl -s --connect-timeout 10 -m 15 https://raw.githubusercontent.com/LeoJyenn/hinas/main/caidan.sh | grep -m1 "^SCRIPT_VERSION=" | cut -d'"' -f2)
+    echo "$remote_version"
+}
+
+# 比较版本号
+function compare_versions() {
+    local current="$1"
+    local remote="$2"
+    
+    if [ -z "$remote" ]; then
+        echo "unknown"
+        return
+    fi
+    
+    # 简单的版本比较，将来可以改进为更复杂的语义版本比较
+    if [ "$current" = "$remote" ]; then
+        echo "equal"
+    else
+        IFS='.' read -ra CURRENT_ARR <<< "$current"
+        IFS='.' read -ra REMOTE_ARR <<< "$remote"
+        
+        for ((i=0; i<${#CURRENT_ARR[@]} && i<${#REMOTE_ARR[@]}; i++)); do
+            if [ "${CURRENT_ARR[$i]}" -lt "${REMOTE_ARR[$i]}" ]; then
+                echo "older"
+                return
+            elif [ "${CURRENT_ARR[$i]}" -gt "${REMOTE_ARR[$i]}" ]; then
+                echo "newer"
+                return
+            fi
+        done
+        
+        if [ ${#CURRENT_ARR[@]} -lt ${#REMOTE_ARR[@]} ]; then
+            echo "older"
+        elif [ ${#CURRENT_ARR[@]} -gt ${#REMOTE_ARR[@]} ]; then
+            echo "newer"
+        else
+            echo "equal"
+        fi
+    fi
 }
 
 mkdirTools
@@ -345,39 +391,165 @@ ${NC}"
                     rm -rf ~/.local/share/Trash/*
                     sudo apt-get autoclean
 
-                    # 深度清理特有步骤
-                    echo -e "${CYAN}清理系统日志...${NC}"
-                    sudo journalctl --vacuum-time=3d
+                    # 深度清理特有步骤，先扫描文件
+                    echo -e "\n${YELLOW}扫描需要清理的文件...${NC}"
+                    
+                    echo -e "${CYAN}扫描系统日志...${NC}"
+                    journal_size=$(sudo journalctl --disk-usage | awk '{print $7 " " $8}')
+                    echo -e "${YELLOW}当前日志大小：${journal_size}${NC}"
+                    
+                    echo -e "\n${CYAN}扫描旧的备份文件...${NC}"
+                    backup_files=$(sudo find /var/backups -name "*.old" 2>/dev/null | head -n 10)
+                    backup_count=$(sudo find /var/backups -name "*.old" 2>/dev/null | wc -l)
+                    if [ -n "$backup_files" ]; then
+                        echo -e "${YELLOW}找到 $backup_count 个旧备份文件，示例：${NC}"
+                        echo "$backup_files"
+                        if [ $backup_count -gt 10 ]; then
+                            echo -e "${YELLOW}... 还有 $((backup_count - 10)) 个文件未显示${NC}"
+                        fi
+                    else
+                        echo -e "${GREEN}未发现旧备份文件${NC}"
+                    fi
+                    
+                    echo -e "\n${CYAN}扫描旧的安装包...${NC}"
+                    deb_files=$(sudo find /var/cache/apt/archives -name "*.deb" 2>/dev/null | head -n 10)
+                    deb_count=$(sudo find /var/cache/apt/archives -name "*.deb" 2>/dev/null | wc -l)
+                    deb_size=$(du -sh /var/cache/apt/archives 2>/dev/null | awk '{print $1}')
+                    if [ -n "$deb_files" ]; then
+                        echo -e "${YELLOW}找到 $deb_count 个安装包，总大小约 $deb_size，示例：${NC}"
+                        echo "$deb_files"
+                        if [ $deb_count -gt 10 ]; then
+                            echo -e "${YELLOW}... 还有 $((deb_count - 10)) 个文件未显示${NC}"
+                        fi
+                    else
+                        echo -e "${GREEN}未发现旧的安装包${NC}"
+                    fi
+                    
+                    echo -e "\n${CYAN}扫描临时数据文件...${NC}"
+                    temp_count=$(sudo find /var/tmp -type f 2>/dev/null | wc -l)
+                    temp_size=$(du -sh /var/tmp 2>/dev/null | awk '{print $1}')
+                    echo -e "${YELLOW}临时目录包含 $temp_count 个文件，总大小约 $temp_size${NC}"
+                    
+                    echo -e "\n${CYAN}扫描遗留的日志文件...${NC}"
+                    log_files=$(sudo find /var/log -type f \( -name "*.gz" -o -name "*.old" -o -name "*.1" -o -regex '.*\.[0-9]+\(\.gz\)?' \) 2>/dev/null | head -n 10)
+                    log_count=$(sudo find /var/log -type f \( -name "*.gz" -o -name "*.old" -o -name "*.1" -o -regex '.*\.[0-9]+\(\.gz\)?' \) 2>/dev/null | wc -l)
+                    log_size=$(du -sh /var/log 2>/dev/null | awk '{print $1}')
+                    if [ -n "$log_files" ]; then
+                        echo -e "${YELLOW}找到 $log_count 个日志文件，总日志目录大小约 $log_size，示例：${NC}"
+                        echo "$log_files"
+                        if [ $log_count -gt 10 ]; then
+                            echo -e "${YELLOW}... 还有 $((log_count - 10)) 个文件未显示${NC}"
+                        fi
+                    else
+                        echo -e "${GREEN}未发现遗留的日志文件${NC}"
+                    fi
+                    
+                    # 询问用户是否继续清理
+                    echo -e "\n${RED}是否继续执行深度清理? (y/n)${NC}"
+                    read -e -p "" confirm_deep_clean
+                    if [[ "$confirm_deep_clean" == "y" || "$confirm_deep_clean" == "Y" ]]; then
+                        echo -e "\n${YELLOW}开始执行深度清理...${NC}"
+                        
+                        echo -e "${CYAN}清理系统日志...${NC}"
+                        sudo journalctl --vacuum-time=3d
 
-                    echo -e "${CYAN}清理旧的备份文件...${NC}"
-                    sudo rm -rf /var/backups/*.old 2>/dev/null
+                        echo -e "${CYAN}清理旧的备份文件...${NC}"
+                        sudo rm -rf /var/backups/*.old 2>/dev/null
 
-                    echo -e "${CYAN}清理旧的安装包...${NC}"
-                    sudo rm -rf /var/cache/apt/archives/*.deb
+                        echo -e "${CYAN}清理旧的安装包...${NC}"
+                        sudo rm -rf /var/cache/apt/archives/*.deb
 
-                    echo -e "${CYAN}清理临时数据目录...${NC}"
-                    sudo rm -rf /var/tmp/.[!.]* /var/tmp/..?* /var/tmp/* 2>/dev/null
+                        echo -e "${CYAN}清理临时数据目录...${NC}"
+                        sudo rm -rf /var/tmp/.[!.]* /var/tmp/..?* /var/tmp/* 2>/dev/null
 
-                    echo -e "${CYAN}清理遗留的日志文件...${NC}"
-                    sudo find /var/log -type f -name "*.gz" -o -name "*.old" -o -name "*.1" | xargs sudo rm -f 2>/dev/null
-                    sudo find /var/log -type f -regex '.*\.[0-9]+\(\.gz\)?' | xargs sudo rm -f 2>/dev/null
+                        echo -e "${CYAN}清理遗留的日志文件...${NC}"
+                        sudo find /var/log -type f -name "*.gz" -o -name "*.old" -o -name "*.1" | xargs sudo rm -f 2>/dev/null
+                        sudo find /var/log -type f -regex '.*\.[0-9]+\(\.gz\)?' | xargs sudo rm -f 2>/dev/null
 
-                    echo -e "\n${GREEN}✓ 深度清理完成!${NC}"
+                        echo -e "\n${GREEN}✓ 深度清理完成!${NC}"
+                    else
+                        echo -e "${YELLOW}已取消深度清理${NC}"
+                    fi
                     ;;
 
                 3) # 高级清理
                     echo -e "\n${YELLOW}执行高级清理 (依赖和内核)...${NC}"
-                    echo -e "${RED}警告: 此操作将移除未使用的软件包和旧内核，确认继续? (y/n)${NC}"
+                    
+                    echo -e "\n${YELLOW}扫描需要清理的内容...${NC}"
+                    
+                    # 扫描未使用的依赖项
+                    echo -e "${CYAN}扫描未使用的依赖项...${NC}"
+                    unused_deps=$(apt-get autoremove --dry-run | grep -oP '(?<=以下软件包将被卸载：\n).*?(?=\n\n升级了)' || apt-get autoremove --dry-run | grep -oP '(?<=The following packages will be REMOVED:).*?(?=\n\n\d+)' | tr -d '\n')
+                    if [ -n "$unused_deps" ]; then
+                        unused_deps_count=$(echo "$unused_deps" | wc -w)
+                        echo -e "${YELLOW}发现 $unused_deps_count 个未使用的依赖项:${NC}"
+                        echo -e "$unused_deps"
+                    else
+                        echo -e "${GREEN}未发现未使用的依赖项${NC}"
+                    fi
+                    
+                    # 扫描旧内核
+                    echo -e "\n${CYAN}扫描旧版本的Linux内核...${NC}"
+                    current_kernel=$(uname -r)
+                    old_kernels=$(dpkg -l | awk '/^ii linux-image-.*[0-9]/{print $2}' | grep -v "$current_kernel")
+                    if [ -n "$old_kernels" ]; then
+                        old_kernels_count=$(echo "$old_kernels" | wc -l)
+                        kernel_size=$(du -sch /boot/* 2>/dev/null | tail -n 1 | awk '{print $1}')
+                        echo -e "${YELLOW}发现 $old_kernels_count 个旧内核，当前使用: $current_kernel${NC}"
+                        echo -e "${YELLOW}/boot 目录大小约: $kernel_size${NC}"
+                        echo -e "${YELLOW}旧内核列表:${NC}"
+                        echo "$old_kernels"
+                    else
+                        echo -e "${GREEN}未发现旧内核${NC}"
+                    fi
+                    
+                    # 扫描未完全卸载的软件包
+                    echo -e "\n${CYAN}扫描未完全卸载的软件包...${NC}"
+                    dpkg_removed=$(dpkg -l | grep "^rc" | awk '{print $2}')
+                    if [ -n "$dpkg_removed" ]; then
+                        dpkg_removed_count=$(echo "$dpkg_removed" | wc -w)
+                        echo -e "${YELLOW}发现 $dpkg_removed_count 个未完全卸载的软件包:${NC}"
+                        echo "$dpkg_removed"
+                    else
+                        echo -e "${GREEN}未发现未完全卸载的软件包${NC}"
+                    fi
+                    
+                    # 扫描旧的Snap包
+                    if command -v snap &>/dev/null; then
+                        echo -e "\n${CYAN}扫描旧的Snap包...${NC}"
+                        disabled_snaps=$(snap list --all | grep disabled | awk '{print $1, "版本:",$3, "状态:", $6}')
+                        if [ -n "$disabled_snaps" ]; then
+                            disabled_snaps_count=$(snap list --all | grep disabled | wc -l)
+                            echo -e "${YELLOW}发现 $disabled_snaps_count 个旧版本的Snap包:${NC}"
+                            echo "$disabled_snaps"
+                        else
+                            echo -e "${GREEN}未发现旧的Snap包${NC}"
+                        fi
+                    fi
+                    
+                    # 扫描Flatpak残留
+                    if command -v flatpak &>/dev/null; then
+                        echo -e "\n${CYAN}扫描Flatpak残留...${NC}"
+                        flatpak_unused=$(flatpak uninstall --unused --dry-run 2>&1)
+                        if echo "$flatpak_unused" | grep -q "unused"; then
+                            echo -e "${YELLOW}发现Flatpak残留:${NC}"
+                            echo "$flatpak_unused"
+                        else
+                            echo -e "${GREEN}未发现Flatpak残留${NC}"
+                        fi
+                    fi
+                    
+                    # 总结内存可以释放的空间
+                    echo -e "\n${RED}警告: 此操作将移除上述已扫描出的未使用软件包和旧内核。确认继续? (y/n)${NC}"
                     read -e -p "" confirm
                     if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                        echo -e "\n${YELLOW}开始执行高级清理...${NC}"
+                        
                         echo -e "${CYAN}删除未使用的依赖项...${NC}"
                         sudo apt-get autoremove -y
 
                         echo -e "${CYAN}删除旧版本的Linux内核...${NC}"
-                        old_kernels=$(dpkg -l | awk '/^ii linux-image-.*[0-9]/{print $2}' | grep -v "$(uname -r)")
                         if [ -n "$old_kernels" ]; then
-                            echo -e "${YELLOW}发现以下旧内核:${NC}"
-                            echo "$old_kernels"
                             echo -e "${YELLOW}正在删除...${NC}"
                             sudo apt-get purge -y $old_kernels
                         else
@@ -385,10 +557,7 @@ ${NC}"
                         fi
 
                         echo -e "${CYAN}清理未完全卸载的软件包...${NC}"
-                        dpkg_removed=$(dpkg -l | grep "^rc" | awk '{print $2}')
                         if [ -n "$dpkg_removed" ]; then
-                            echo -e "${YELLOW}发现以下未完全卸载的软件包:${NC}"
-                            echo "$dpkg_removed"
                             echo -e "${YELLOW}正在清理...${NC}"
                             sudo dpkg --purge $dpkg_removed
                         else
@@ -398,10 +567,17 @@ ${NC}"
                         echo -e "${CYAN}检查Snap包...${NC}"
                         if command -v snap &>/dev/null; then
                             # 保留当前及前一个版本，删除更旧的版本
-                            sudo snap list --all | awk '/disabled/{print $1, $3}' |
-                                while read snapname revision; do
+                            snap_count=0
+                            while read snapname revision; do
+                                if [ -n "$snapname" ] && [ -n "$revision" ]; then
                                     sudo snap remove "$snapname" --revision="$revision"
-                                done
+                                    ((snap_count++))
+                                fi
+                            done < <(sudo snap list --all | awk '/disabled/{print $1, $3}')
+                            
+                            if [ $snap_count -gt 0 ]; then
+                                echo -e "${GREEN}✓ 已清理 $snap_count 个旧的Snap包${NC}"
+                            fi
                         fi
 
                         echo -e "${CYAN}检查Flatpak残留...${NC}"
@@ -478,6 +654,107 @@ ${NC}"
 
                 5) # 全面系统清理
                     echo -e "\n${YELLOW}执行全面系统清理...${NC}"
+                    
+                    # 执行全面扫描
+                    echo -e "\n${YELLOW}开始全面系统扫描...${NC}"
+                    
+                    # 1. 扫描标准清理内容
+                    echo -e "\n${CYAN}1. 扫描标准清理内容${NC}"
+                    echo -e "${CYAN}临时文件占用空间情况:${NC}"
+                    tmp_size=$(du -sh /tmp 2>/dev/null | awk '{print $1}')
+                    tmp_count=$(find /tmp -type f 2>/dev/null | wc -l)
+                    echo -e "${YELLOW}/tmp 目录大小: $tmp_size, 文件数: $tmp_count${NC}"
+                    
+                    echo -e "${CYAN}用户缓存占用空间:${NC}"
+                    cache_size=$(du -sh ~/.cache 2>/dev/null | awk '{print $1}')
+                    echo -e "${YELLOW}~/.cache 目录大小: $cache_size${NC}"
+                    
+                    echo -e "${CYAN}回收站占用空间:${NC}"
+                    trash_size=$(du -sh ~/.local/share/Trash 2>/dev/null | awk '{print $1}')
+                    echo -e "${YELLOW}回收站大小: $trash_size${NC}"
+                    
+                    # 2. 扫描深度清理内容
+                    echo -e "\n${CYAN}2. 扫描深度清理内容${NC}"
+                    
+                    echo -e "${CYAN}系统日志大小:${NC}"
+                    journal_size=$(sudo journalctl --disk-usage 2>/dev/null | awk '{print $7 " " $8}')
+                    echo -e "${YELLOW}journalctl 日志大小: $journal_size${NC}"
+                    
+                    echo -e "${CYAN}备份文件:${NC}"
+                    backup_count=$(sudo find /var/backups -name "*.old" 2>/dev/null | wc -l)
+                    backup_size=$(du -sh /var/backups 2>/dev/null | awk '{print $1}')
+                    echo -e "${YELLOW}备份文件数量: $backup_count, 目录大小: $backup_size${NC}"
+                    
+                    echo -e "${CYAN}旧安装包:${NC}"
+                    deb_count=$(find /var/cache/apt/archives -name "*.deb" 2>/dev/null | wc -l)
+                    deb_size=$(du -sh /var/cache/apt/archives 2>/dev/null | awk '{print $1}')
+                    echo -e "${YELLOW}安装包数量: $deb_count, 大小: $deb_size${NC}"
+                    
+                    echo -e "${CYAN}日志文件:${NC}"
+                    log_size=$(du -sh /var/log 2>/dev/null | awk '{print $1}')
+                    log_count=$(find /var/log -type f \( -name "*.gz" -o -name "*.old" -o -name "*.1" \) 2>/dev/null | wc -l)
+                    echo -e "${YELLOW}日志目录大小: $log_size, 旧日志文件数: $log_count${NC}"
+                    
+                    # 3. 扫描高级清理内容
+                    echo -e "\n${CYAN}3. 扫描高级清理内容${NC}"
+                    
+                    echo -e "${CYAN}未使用的依赖项:${NC}"
+                    unused_deps=$(apt-get autoremove --dry-run | grep -oP '(?<=以下软件包将被卸载：\n).*?(?=\n\n升级了)' || apt-get autoremove --dry-run | grep -oP '(?<=The following packages will be REMOVED:).*?(?=\n\n\d+)' | tr -d '\n')
+                    if [ -n "$unused_deps" ]; then
+                        unused_deps_count=$(echo "$unused_deps" | wc -w)
+                        echo -e "${YELLOW}未使用的依赖项数量: $unused_deps_count${NC}"
+                    else
+                        echo -e "${GREEN}未发现未使用的依赖项${NC}"
+                    fi
+                    
+                    echo -e "${CYAN}旧内核:${NC}"
+                    old_kernels=$(dpkg -l | awk '/^ii linux-image-.*[0-9]/{print $2}' | grep -v "$(uname -r)")
+                    if [ -n "$old_kernels" ]; then
+                        old_kernels_count=$(echo "$old_kernels" | wc -l)
+                        echo -e "${YELLOW}旧内核数量: $old_kernels_count${NC}"
+                    else
+                        echo -e "${GREEN}未发现旧内核${NC}"
+                    fi
+                    
+                    echo -e "${CYAN}未完全卸载的软件包:${NC}"
+                    dpkg_removed=$(dpkg -l | grep "^rc" | awk '{print $2}')
+                    if [ -n "$dpkg_removed" ]; then
+                        dpkg_removed_count=$(echo "$dpkg_removed" | wc -w)
+                        echo -e "${YELLOW}未完全卸载软件包数量: $dpkg_removed_count${NC}"
+                    else
+                        echo -e "${GREEN}未发现未完全卸载的软件包${NC}"
+                    fi
+                    
+                    # 4. 其他清理内容
+                    echo -e "\n${CYAN}4. 其他清理项目${NC}"
+                    
+                    if [ -d ~/.cache/tracker ]; then
+                        tracker_size=$(du -sh ~/.cache/tracker 2>/dev/null | awk '{print $1}')
+                        echo -e "${YELLOW}搜索索引缓存大小: $tracker_size${NC}"
+                    fi
+                    
+                    if [ -d ~/.thumbnails ] || [ -d ~/.cache/thumbnails ]; then
+                        thumb_size=$(du -sh ~/.thumbnails ~/.cache/thumbnails 2>/dev/null | awk '{sum += $1; print sum}')
+                        echo -e "${YELLOW}缩略图缓存大小: $thumb_size${NC}"
+                    fi
+                    
+                    if [ -d ~/.mozilla/firefox ] || [ -d ~/.config/google-chrome ]; then
+                        browser_cache=0
+                        if [ -d ~/.mozilla/firefox ]; then
+                            firefox_size=$(du -sh ~/.mozilla/firefox 2>/dev/null | awk '{print $1}')
+                            echo -e "${YELLOW}Firefox缓存大小: $firefox_size${NC}"
+                        fi
+                        if [ -d ~/.config/google-chrome ]; then
+                            chrome_size=$(du -sh ~/.config/google-chrome/Default/Cache ~/.config/google-chrome/Default/Code\ Cache 2>/dev/null | awk '{print $1}')
+                            echo -e "${YELLOW}Chrome缓存大小: $chrome_size${NC}"
+                        fi
+                    fi
+                    
+                    # 获取磁盘使用状况
+                    disk_usage=$(df -h / | awk 'NR==2 {print $5}')
+                    disk_free=$(df -h / | awk 'NR==2 {print $4}')
+                    echo -e "\n${CYAN}当前系统状态: 使用率 ${YELLOW}$disk_usage${CYAN} (剩余空间: ${GREEN}$disk_free${CYAN})${NC}\n"
+                    
                     echo -e "${RED}警告: 此操作将执行所有清理步骤，可能需要一些时间。确认继续? (y/n)${NC}"
                     read -e -p "" confirm
                     if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
@@ -3239,8 +3516,11 @@ EOF
         ;;
 
     c | C | caidanu)
-        echo -e "${YELLOW}正在更新脚本...${NC}"
-
+        echo -e "${YELLOW}正在检查脚本更新...${NC}"
+        
+        # 显示当前版本
+        echo -e "${CYAN}当前版本: ${GREEN}v${SCRIPT_VERSION}${NC}"
+        
         # 创建备份
         backup_path="/etc/caidan/caidan.sh.backup-$(date +%Y%m%d%H%M%S)"
         if [ -f "/etc/caidan/caidan.sh" ]; then
@@ -3261,6 +3541,48 @@ EOF
                 exit 0
             fi
         fi
+        
+        # 获取远程版本
+        echo -e "${CYAN}正在获取远程版本信息...${NC}"
+        REMOTE_VERSION=$(get_remote_version)
+        
+        if [ -z "$REMOTE_VERSION" ]; then
+            echo -e "${RED}✗ 无法获取远程版本信息${NC}"
+            read -e -p "是否继续尝试更新？(y/n): " continue_update
+            if [[ "$continue_update" != "y" && "$continue_update" != "Y" ]]; then
+                echo -e "${YELLOW}更新已取消${NC}"
+                exit 0
+            fi
+        else
+            echo -e "${CYAN}远程版本: ${GREEN}v${REMOTE_VERSION}${NC}"
+            
+            # 比较版本
+            VERSION_COMPARE=$(compare_versions "$SCRIPT_VERSION" "$REMOTE_VERSION")
+            case "$VERSION_COMPARE" in
+                "equal")
+                    echo -e "${GREEN}✓ 当前已是最新版本，无需更新${NC}"
+                    read -e -p "是否强制更新？(y/n): " force_update
+                    if [[ "$force_update" != "y" && "$force_update" != "Y" ]]; then
+                        echo -e "${YELLOW}更新已取消${NC}"
+                        exit 0
+                    fi
+                    ;;
+                "newer")
+                    echo -e "${YELLOW}! 当前版本比远程版本更新，可能是开发版本${NC}"
+                    read -e -p "是否继续更新？(y/n): " continue_update
+                    if [[ "$continue_update" != "y" && "$continue_update" != "Y" ]]; then
+                        echo -e "${YELLOW}更新已取消${NC}"
+                        exit 0
+                    fi
+                    ;;
+                "older")
+                    echo -e "${YELLOW}! 发现新版本，准备更新${NC}"
+                    ;;
+                *)
+                    echo -e "${YELLOW}! 版本比较失败，将继续更新${NC}"
+                    ;;
+            esac
+        fi
 
         # 设置下载URL
         GITHUB_URL="https://raw.githubusercontent.com/LeoJyenn/hinas/main/caidan.sh"
@@ -3270,12 +3592,23 @@ EOF
         if curl -s --connect-timeout 10 -m 30 -o /etc/caidan/caidan.sh.new $GITHUB_URL; then
             # 检查文件完整性
             if [ -f "/etc/caidan/caidan.sh.new" ] && [ -s "/etc/caidan/caidan.sh.new" ]; then
+                # 检查下载的文件是否包含版本号
+                NEW_VERSION=$(grep -m1 "^SCRIPT_VERSION=" /etc/caidan/caidan.sh.new | cut -d'"' -f2)
+                if [ -n "$NEW_VERSION" ]; then
+                    echo -e "${CYAN}已下载版本: ${GREEN}v${NEW_VERSION}${NC}"
+                else
+                    echo -e "${YELLOW}警告: 无法在下载的文件中找到版本号${NC}"
+                fi
+                
                 chmod +x /etc/caidan/caidan.sh.new
                 # 修复可能的换行符问题
                 sed -i 's/\r$//' /etc/caidan/caidan.sh.new 2>/dev/null
                 mv /etc/caidan/caidan.sh.new /etc/caidan/caidan.sh
                 ln -sf /etc/caidan/caidan.sh /usr/bin/caidan
                 echo -e "${GREEN}✓ 脚本更新成功，重新执行 [caidan] 生效${NC}"
+                if [ -n "$NEW_VERSION" ] && [ "$NEW_VERSION" != "$SCRIPT_VERSION" ]; then
+                    echo -e "${GREEN}✓ 版本已从 v${SCRIPT_VERSION} 更新至 v${NEW_VERSION}${NC}"
+                fi
             else
                 echo -e "${RED}✗ 下载的文件不完整${NC}"
                 if [ -f "$backup_path" ]; then
