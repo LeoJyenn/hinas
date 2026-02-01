@@ -59,7 +59,24 @@ BOLD='\e[1m'
 NC='\e[0m' # No Color
 
 # IP
-IP=$(ifconfig eth0 | grep '\<inet\>' | grep -v '127.0.0.1' | awk '{print $2}' | awk 'NR==1')
+get_ip() {
+    local ip=""
+
+    if command -v ip >/dev/null 2>&1; then
+        ip=$(ip -4 addr show scope global | awk '/inet /{print $2}' | cut -d/ -f1 | head -n 1)
+    fi
+
+    if [ -z "$ip" ] && command -v ifconfig >/dev/null 2>&1; then
+        ip=$(ifconfig | awk '/inet / && $2 !~ /127\.0\.0\.1/ {print $2}' | head -n 1)
+    fi
+
+    if [ -z "$ip" ] && command -v hostname >/dev/null 2>&1; then
+        ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    fi
+
+    echo "$ip"
+}
+IP=$(get_ip)
 
 # 初始化安装目录
 function mkdirTools() {
@@ -67,7 +84,7 @@ function mkdirTools() {
 }
 
 # 脚本快捷方式安装
-function install-caidan() {
+function install_caidan() {
     if [[ -f "./caidan.sh" ]]; then
         mkdir -p /etc/caidan
         mv ./caidan.sh /etc/caidan/caidan.sh
@@ -82,7 +99,7 @@ function install-caidan() {
 }
 
 # 更新脚本 - 此函数保留兼容性，实际更新逻辑已移至主菜单
-function renew-caidan() {
+function renew_caidan() {
     echo -e "${YELLOW}正在使用兼容模式更新脚本...${NC}"
 
     # 创建备份
@@ -113,7 +130,7 @@ function renew-caidan() {
 }
 
 # 卸载脚本
-function unInstall-caidan() {
+function unInstall_caidan() {
     echo -e "${RED}是否确认卸载脚本？(y/n)${NC}"
     read -e -p "(y/n): " unInstallStatus
 
@@ -178,7 +195,7 @@ function compare_versions() {
 }
 
 mkdirTools
-install-caidan
+install_caidan
 
 # 绘制菜单标题
 function print_menu_header() {
@@ -1569,7 +1586,7 @@ EOF
             fi
         }
         DEVICE=$(dmesg 2>/dev/null | grep "CPU: hi3798" | awk -F ':[ ]' '/CPU/{printf ($2)}')
-        [ ! "$DEVICE" ] && DEVICE=$(head -n 1 /etc/regname 2>/null)
+        [ ! "$DEVICE" ] && DEVICE=$(head -n 1 /etc/regname 2>/dev/null)
         mac_now=$(ifconfig eth0 | grep "ether" | awk '{print $2}')
         clear
         echo -e "\e[33m
@@ -2627,18 +2644,19 @@ EOF
         while true; do
             clear
             echo -e "${GREEN}====== Docker管理脚本 ====== ${NC}"
-            echo -e "${YELLOW}1. 显示所有容器${NC}"
-            echo -e "${YELLOW}2. 显示所有镜像${NC}"
-            echo -e "${YELLOW}3. 启动容器${NC}"
-            echo -e "${YELLOW}4. 停止容器${NC}"
-            echo -e "${YELLOW}5. 重启容器${NC}"
-            echo -e "${YELLOW}6. 删除容器${NC}"
-            echo -e "${YELLOW}7. 删除镜像${NC}"
-            echo -e "${YELLOW}8. 安装docker${NC}"
-            echo -e "${YELLOW}9. 卸载docker${NC}"
-            echo -e "${YELLOW}10.安装Portainer${NC}"
-            echo -e "${YELLOW}11.安装青龙面板${NC}"
-            echo -e "${YELLOW}12.安装DDNSGO${NC}"
+            echo -e "${YELLOW}1. 启用Docker代理${NC}"
+            echo -e "${YELLOW}2. 显示所有容器${NC}"
+            echo -e "${YELLOW}3. 显示所有镜像${NC}"
+            echo -e "${YELLOW}4. 启动容器${NC}"
+            echo -e "${YELLOW}5. 停止容器${NC}"
+            echo -e "${YELLOW}6. 重启容器${NC}"
+            echo -e "${YELLOW}7. 删除容器${NC}"
+            echo -e "${YELLOW}8. 删除镜像${NC}"
+            echo -e "${YELLOW}9. 安装docker${NC}"
+            echo -e "${YELLOW}10. 卸载docker${NC}"
+            echo -e "${YELLOW}11.安装Portainer${NC}"
+            echo -e "${YELLOW}12.安装青龙面板${NC}"
+            echo -e "${YELLOW}13.安装DDNSGO${NC}"
             echo -e "${YELLOW}14.安装Lucky${NC}"
             echo -e "${YELLOW}15.安装Uptime Kuma${NC}"
             echo -e "${RED}q. 返回${NC}"
@@ -2651,36 +2669,88 @@ EOF
                 fi
             }
 
+            function script_dir() {
+                local src="$0"
+                if command -v readlink >/dev/null 2>&1; then
+                    readlink -f "$src"
+                else
+                    echo "$src"
+                fi | sed 's|/[^/]*$||'
+            }
+
+            function run_local_script() {
+                local name="$1"
+                local dir
+                dir=$(script_dir)
+
+                if [ -x "$dir/$name" ]; then
+                    "$dir/$name"
+                elif command -v "$name" >/dev/null 2>&1; then
+                    "$name"
+                else
+                    echo -e "${RED}未找到脚本: $name${NC}"
+                    return 1
+                fi
+            }
+
+            function ensure_dir() {
+                local dir="$1"
+                if [ ! -d "$dir" ]; then
+                    mkdir -p "$dir" 2>/dev/null
+                fi
+            }
+
+            function container_exists() {
+                local name="$1"
+                docker ps -a --format '{{.Names}}' | grep -x "$name" >/dev/null 2>&1
+            }
+
             function install_docker() {
                 # 调用安装 Docker 的脚本
-                install-docker.sh
+                run_local_script "install-docker.sh"
             }
 
             function uninstall_docker() {
                 # 卸载docker
                 check_docker_installed || return 1
-                sudo apt-get purge docker-ce docker-ce-cli containerd.io
+                if command -v apt-get &>/dev/null; then
+                    sudo apt-get purge docker-ce docker-ce-cli containerd.io
+                else
+                    echo -e "${YELLOW}未检测到apt-get，请手动卸载Docker${NC}"
+                fi
                 sudo rm -rf /var/lib/docker
-                sudo rm /usr/local/bin/docker-compose
+                if [ -f /usr/local/bin/docker-compose ]; then
+                    sudo rm /usr/local/bin/docker-compose
+                fi
                 echo -e "${GREEN}Docker卸载完成${NC}"
             }
 
             function install_portainer() {
                 check_docker_installed || return 1
                 # 调用安装 Portainer 的脚本
-                install-portainer.sh
+                run_local_script "install-portainer.sh"
             }
 
             function install_qinglong() {
                 check_docker_installed || return 1
                 # 调用安装青龙面板的脚本
-                install-qinglong.sh
+                run_local_script "install-qinglong.sh"
             }
 
             function install_ddnsgo() {
                 check_docker_installed || return 1
+                if container_exists "ddns-go"; then
+                    echo -e "${YELLOW}容器 ddns-go 已存在，跳过安装${NC}"
+                    return 0
+                fi
+                ensure_dir "/opt/ddns-go"
+                ensure_dir "/var/www/html/img/png"
+                ensure_dir "/var/www/html/icons_wan"
                 # 安装ddnsgo
-                docker run -d --name ddns-go --restart=always --net=host -v /opt/ddns-go:/root jeessy/ddns-go
+                if ! docker run -d --name ddns-go --restart=always --net=host -v /opt/ddns-go:/root jeessy/ddns-go; then
+                    echo -e "${RED}DDNSGO 容器启动失败，请检查网络或镜像可用性${NC}"
+                    return 1
+                fi
                 # 图标
                 curl -o /var/www/html/img/png/ddnsgo.png https://raw.githubusercontent.com/LX-webo/hinas/main/ddnsgo.png
 
@@ -2690,6 +2760,29 @@ EOF
             </li>
 EOF
                 echo -e "${GREEN}安装完成，web地址: $IP:9876${NC}"
+            }
+
+            function enable_docker_proxy() {
+                if ! command -v systemctl &>/dev/null; then
+                    echo -e "${RED}未检测到systemctl，无法设置Docker服务代理${NC}"
+                    return 1
+                fi
+
+                sudo mkdir -p /etc/systemd/system/docker.service.d
+                cat <<EOF | sudo tee /etc/systemd/system/docker.service.d/http-proxy.conf >/dev/null
+[Service]
+Environment="HTTP_PROXY=http://127.0.0.1:10809"
+Environment="HTTPS_PROXY=http://127.0.0.1:10809"
+Environment="NO_PROXY=localhost,127.0.0.1"
+EOF
+
+                sudo systemctl daemon-reload
+                sudo systemctl restart docker
+
+                if command -v docker &>/dev/null; then
+                    echo -e "${GREEN}Docker代理已配置，当前Proxy信息:${NC}"
+                    docker info 2>/dev/null | grep -i proxy
+                fi
             }
 
             function show_running_containers() {
@@ -2770,7 +2863,16 @@ EOF
 
             function Lucky() {
                 check_docker_installed || return 1
-                docker run -d --name lucky --restart=always --net=host gdy666/lucky
+                if container_exists "lucky"; then
+                    echo -e "${YELLOW}容器 lucky 已存在，跳过安装${NC}"
+                    return 0
+                fi
+                ensure_dir "/var/www/html/img/png"
+                ensure_dir "/var/www/html/icons_wan"
+                if ! docker run -d --name lucky --restart=always --net=host gdy666/lucky; then
+                    echo -e "${RED}Lucky 容器启动失败，请检查网络或镜像可用性${NC}"
+                    return 1
+                fi
                 # 图标
                 curl -o /var/www/html/img/png/lucky.png https://raw.githubusercontent.com/LX-webo/hinas/main/lucky.png
                 cat <<EOF >/var/www/html/icons_wan/lucky.html
@@ -2783,7 +2885,16 @@ EOF
 
             function UptimeKuma() {
                 check_docker_installed || return 1
-                docker run -d --restart=always -p 3001:3001 -v uptime-kuma:/app/data --name uptime-kuma louislam/uptime-kuma:1
+                if container_exists "uptime-kuma"; then
+                    echo -e "${YELLOW}容器 uptime-kuma 已存在，跳过安装${NC}"
+                    return 0
+                fi
+                ensure_dir "/var/www/html/img/png"
+                ensure_dir "/var/www/html/icons_lan"
+                if ! docker run -d --restart=always -p 3001:3001 -v uptime-kuma:/app/data --name uptime-kuma louislam/uptime-kuma:1; then
+                    echo -e "${RED}Uptime Kuma 容器启动失败，请检查网络或镜像可用性${NC}"
+                    return 1
+                fi
                 # 图标
                 curl -o /var/www/html/img/png/UptimeKuma.png https://raw.githubusercontent.com/LX-webo/hinas/main/UptimeKuma.png
                 cat <<EOF >/var/www/html/icons_lan/UptimeKuma.html
@@ -2795,18 +2906,19 @@ EOF
             }
 
             case $choice in
-            1) show_running_containers ;;
-            2) show_images ;;
-            3) start_container ;;
-            4) stop_container ;;
-            5) restart_container ;;
-            6) remove_container ;;
-            7) remove_image ;;
-            8) install_docker ;;
-            9) uninstall_docker ;;
-            10) install_portainer ;;
-            11) install_qinglong ;;
-            12) install_ddnsgo ;;
+            1) enable_docker_proxy ;;
+            2) show_running_containers ;;
+            3) show_images ;;
+            4) start_container ;;
+            5) stop_container ;;
+            6) restart_container ;;
+            7) remove_container ;;
+            8) remove_image ;;
+            9) install_docker ;;
+            10) uninstall_docker ;;
+            11) install_portainer ;;
+            12) install_qinglong ;;
+            13) install_ddnsgo ;;
             14) Lucky ;;
             15) UptimeKuma ;;
             q | Q)
@@ -3612,7 +3724,7 @@ EOF
         ;;
 
     e | E | caidanun)
-        unInstall-caidan
+        unInstall_caidan
         ;;
 
     b | B | 0)
